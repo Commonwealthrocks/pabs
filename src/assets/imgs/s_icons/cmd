@@ -1,0 +1,2 @@
+magick _\256.png _\128.png _\32.png pabs.ico
+magick _\u256.png _\u128.png _\32.png unins.ico
