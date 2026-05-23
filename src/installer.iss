@@ -13,10 +13,11 @@ DefaultDirName={autopf}\PABS
 DisableDirPage=no
 OutputBaseFilename=setup_pabs_0.1a_win32
 Compression=lzma2/ultra64
+DefaultGroupName=PABS
 SolidCompression=yes
 SetupIconFile=assets\imgs\s_icons\pabs.ico
 UninstallDisplayIcon={app}\assets\imgs\s_icons\unins.ico
-InfoBeforeFile=license.txt
+InfoBeforeFile=..\license.txt
 WizardStyle=modern
 
 [Files]
