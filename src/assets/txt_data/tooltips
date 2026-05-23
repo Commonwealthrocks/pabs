@@ -1,0 +1,136 @@
+cd_ws="""
+Controls the burning speed for CDs.
+
+Most modern drives and quality blank media
+tend to burn best around 16x, offering a good
+balance between speed and overall reliability.
+
+Lower speeds can sometimes improve pit geometry
+and readability on older CD players, retro
+consoles, car stereos, and other messy ass hardware.
+"""
+dvd_ws="""
+Controls the burning speed for DVDs.
+
+DVDs have higher capacity than CDs, so burn speed
+can vary more depending on media quality and drive performance.
+
+8x is probably your best bet, while 16x can work well on
+higher quality discs and modern drives. Both offer a good
+balance between speed and reliability.
+"""
+cd_rs="""
+Controls the read / ripping speed for CDs
+
+For clean, undamaged discs, MAX speed is USUALLY fine.
+
+If a disc is producing read errors, lowering the speed
+can help your reader / writer recover data more reliably and
+reduce skipped sectors.
+
+Keep in mind these read / ripping modes won't be enough for
+heavily damaged discs or discs that are prone to read errors often;
+using specialized software like ddrescue are recommended.
+"""
+dvd_rs="""
+Controls the read / ripping speed for DVDs.
+
+Same idea as with the CD read speeds, MAX is usually fine for undamaged
+discs.
+
+On discs that produce read errors, lowering the speed can help
+your reader / writer rip or recover data more reliably and reduce
+skipped sectors.
+"""
+def_drv="""
+The optical drive assumed by PABS on startup.
+
+PABS will as usual try to automatically detect the first available
+reader / writer at your disposal. If there are no drives / your selected
+drive cannot be reached; the app will throw a warning.
+"""
+write_mode="""
+Disc At Once (DAO) writes the entire disc in a
+single pass with no gaps, best for audio CDs
+and discs that must be read on standalone players.
+
+Track At Once (TAO) writes one track at a time
+and allows multi session discs.
+"""
+verify="""
+Re-reads the disc after burning and compares it against
+the original data.
+
+Helps catch bad burns and hidden read errors before they
+catch you...
+
+This option will ROUGHLY take as long as the original burn did
+since PABS is forced to re-read every sector of the disc.
+"""
+eject="""
+Automatically ejects the disc tray after a
+successful burn or rip.
+
+Also avoids the Windows Explorer slowdown
+that can happen when a disc is left inserted
+during shutdown / startup.
+"""
+mode_select="""
+Sends a SCSI MODE SELECT command to configure
+drive parameters before burning.
+
+Only needed for certain older drives. Leave
+this off unless you know your drive really
+really needs it.
+"""
+iso_mode="""
+Selects the filesystem format for discs.
+
+ISO9660 is the oldest and most compatible format, supported by nearly every OS
+and reader / writer. Depending on the compatibility level used, it may restrict
+filename length and character support.
+
+Joliet (9660) is Microslop's format that extends ISO9660 with longer filenames and
+UNICODE support, mainly for improved Windows compatibility. Most modern OSes support
+Joliet (9660) without issues or any concerns.
+
+UDF (Universal Disk Format) is the modern standard for DVDs and Blu-ray discs.
+Although PABS unironically can't burn Blu-ray's, UDF still supports UNICODE, long
+file names and generally sizes over 4GBs without flaw. However it is less likely to
+be supported on older / legacy devices or hardware.
+
+Hybrid; which adds all of the previously mentioned ISO modes into one and depending
+on the OS or system reading the disc / file. It will pick the best / most suitable
+option to work with, example how Windows might pick Joliet (9660) for regular DVDs
+or CDs and how some legacy systems (example older NT based OSes) will prefer 9660
+for usage.
+"""
+ffmpeg_wav="""
+How PABS saves converted non-wav files with FFmpeg
+
+When enabled (assuming you have FFmpeg in PATH
+that PABS can use), the app will cache the converted
+files to the __cache directory and wipe them when done.
+
+When this setting is disabled; PABS will cache all of the converted
+files in your systems RAM and release it when you remove the selected
+tracks or close the app itself.
+"""
+ffmpeg_path="""
+How PABS uses FFmpeg.
+
+PABS will (if can) use FFmpeg to convert any compatible codec with FFmpeg
+into raw PCM data, since audio discs / CDs mostly require a specific WAV codec
+to function or be burned in general. PABS will automatically detect any presence
+of FFmpeg in your systems PATH for usage.
+
+If however you do not have FFmpeg in PATH or want a different ffmpeg.exe to be used;
+you can manually browse and select your desired option and save it.
+"""
+vol_label="""
+Default volume label written into the disc filesystem.
+
+Maximum 11 characters for ISO9660 on Windows (CD / DVD).
+The only times you'd see this name is when in Windows
+Explorer or something.
+"""
