@@ -1,0 +1,4 @@
+// pabs.rc
+// last updated: 11/05/2026
+IDI_APPICON ICON "..\\imgs\\s_icons\\pabs.ico"
+// end
