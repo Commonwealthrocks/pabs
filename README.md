@@ -37,6 +37,12 @@ pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x
 ```
 Do note, you *(hopefully)* do not need to install **DirectX 11**, **Dear ImGui**; or whatever else since they are included in the apps source code and we are mostly using native built-in **Windows** APIs.
 
+### **Clone**
+In your **UCRT64** terminal run the following commands to clone the repo itself...
+```bash
+git clone https://github.com/Commonwealthrocks/pabs.git && cd pabs
+```
+
 ### **Compiling**
 Once your **UCRT64** environment is set up, navigate to the root of the **PABS** source code repository in your terminal and execute the following commands...
 ```bash
