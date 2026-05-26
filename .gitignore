@@ -2,4 +2,7 @@
 **/Output/
 **/ssh/
 **/c_m/
+**.exe
+**.ini
+**.log
 * text=auto
