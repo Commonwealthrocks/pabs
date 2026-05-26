@@ -742,6 +742,9 @@ IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARA
     return ImGui_ImplWin32_WndProcHandlerEx(hwnd, msg, wParam, lParam, ImGui::GetIO());
 }
 
+#include <shellapi.h>
+extern void drag_drop_handle(HDROP hDrop);
+
 // This version is in theory thread-safe in the sense that no path should access ImGui::GetCurrentContext().
 IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandlerEx(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, ImGuiIO& io)
 {
@@ -1210,6 +1213,7 @@ static void ImGui_ImplWin32_CreateWindow(ImGuiViewport* viewport)
     vd->HwndOwned = true;
     viewport->PlatformRequestResize = false;
     viewport->PlatformHandle = viewport->PlatformHandleRaw = vd->Hwnd;
+    ::DragAcceptFiles(vd->Hwnd, TRUE);
 
     // Secondary viewports store their imgui context
     ::SetPropA(vd->Hwnd, "IMGUI_CONTEXT", ImGui::GetCurrentContext());
@@ -1448,6 +1452,9 @@ static LRESULT CALLBACK ImGui_ImplWin32_WndProcHandler_PlatformWindow(HWND hWnd,
     {
         switch (msg)
         {
+        case WM_DROPFILES:
+            drag_drop_handle((HDROP)wParam);
+            return 0;
         case WM_CLOSE:
             viewport->PlatformRequestClose = true;
             return 0; // 0 = Operating system will ignore the message and not destroy the window. We close ourselves.
