@@ -1,5 +1,5 @@
 // outs.cpp
-/// last updated: 23/05/2026
+/// last updated: 26/05/2026
 // win32; cmake -G "Ninja" ..
 // win32; ninja
 // m; You really need a better naming convention, outs?
@@ -14,7 +14,6 @@
 #include <unordered_map>
 #include <d3d11.h>
 #include "config.hpp"
-
 extern ID3D11ShaderResourceView *tex_about;
 struct cue_track
 {
@@ -40,6 +39,7 @@ static std::string cue_error = "";
 static std::string dvd_error = "";
 static bool cue_origin_paths = false;
 static bool cue_is_active = false;
+static bool dvd_is_active = false;
 
 static std::unordered_map<std::string, std::string> s_tooltips;
 void parse_tooltips(const char *exe_dir)
@@ -294,6 +294,7 @@ void cue_handle_drop(const char *path)
     t.file_type = 2;
     t.track_mode = 1;
     t.index1 = "00:00:00";
+    t.performer = cue_perf;
     cue_tracks.push_back(t);
     cue_error.clear();
 }
@@ -301,30 +302,304 @@ void cd_creators() // m; In reality Common doesn't use these functions one bit,
 {                  // >> so I'm adding them more for myself.
     if (cue_dialog)
     {
-        ImGui::OpenPopup("Create CUE file##create_cue_dialog");
+        cue_is_active = true;
         cue_dialog = false;
     }
-    ImGui::SetNextWindowPos(ImVec2(ImGui::GetMainViewport()->WorkPos.x + ImGui::GetMainViewport()->WorkSize.x * 0.5f, ImGui::GetMainViewport()->WorkPos.y + ImGui::GetMainViewport()->WorkSize.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (ImGui::BeginPopupModal("Create CUE file##create_cue_dialog", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+    if (cue_is_active)
     {
-        cue_is_active = true;
-        ImGui::SetNextItemWidth(200);
-        ImGui::InputText("TITLE", cue_title, sizeof(cue_title)); // c; all of the metadata for most burners has to be fully uppercase
-        ImGui::SameLine();                                       // >> https://wiki.hydrogenaudio.org/index.php?title=Cue_sheet
-        ImGui::SetNextItemWidth(200);                            // m; Oh, OK.
-        ImGui::InputText("PERFORMER", cue_perf, sizeof(cue_perf));
-        ImGui::Text("Tracks:");
-        ImGui::BeginChild("##cue_tracks", ImVec2(700, 300), true);
-        for (size_t i = 0; i < cue_tracks.size(); ++i)
+        ImGuiWindowClass window_class;
+        window_class.ViewportFlagsOverrideClear = ImGuiViewportFlags_NoTaskBarIcon;
+        ImGui::SetNextWindowClass(&window_class);
+        if (ImGui::Begin("Create CUE file", &cue_is_active, ImGuiWindowFlags_AlwaysAutoResize))
         {
-            ImGui::PushID((int)i);
-            ImGui::Text("Track %02zu", i + 1);
-            char buf[MAX_PATH];
-            strncpy(buf, cue_tracks[i].file_path.c_str(), sizeof(buf) - 1);
-            buf[sizeof(buf) - 1] = '\0';
+            ImGui::SetNextItemWidth(200);
+            ImGui::InputText("TITLE", cue_title, sizeof(cue_title)); // c; all of the metadata for most burners has to be fully uppercase
+            ImGui::SameLine();                                       // >> https://wiki.hydrogenaudio.org/index.php?title=Cue_sheet
+            ImGui::SetNextItemWidth(200);                            // m; Oh, OK.
+            ImGui::InputText("PERFORMER", cue_perf, sizeof(cue_perf));
+            ImGui::Text("Tracks:");
+            ImGui::BeginChild("##cue_tracks", ImVec2(730, 300), true);
+            for (size_t i = 0; i < cue_tracks.size(); ++i)
+            {
+                ImGui::PushID((int)i);
+
+                ImGui::Button("=");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Drag to reorder");
+                if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
+                {
+                    ImGui::SetDragDropPayload("CUE_TRACK", &i, sizeof(size_t));
+                    ImGui::Text("Move track %02zu", i + 1);
+                    ImGui::EndDragDropSource();
+                }
+                if (ImGui::BeginDragDropTarget())
+                {
+                    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("CUE_TRACK"))
+                    {
+                        size_t source_i = *(const size_t *)payload->Data;
+                        if (source_i != i)
+                        {
+                            cue_track temp = cue_tracks[source_i];
+                            cue_tracks.erase(cue_tracks.begin() + source_i);
+                            cue_tracks.insert(cue_tracks.begin() + i, temp);
+                        }
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+
+                ImGui::SameLine();
+                ImGui::Text("Track %02zu", i + 1);
+                ImGui::SameLine();
+
+                const char *path_cstr = cue_tracks[i].file_path.c_str();
+                const char *filename = strrchr(path_cstr, '\\');
+                if (!filename)
+                    filename = strrchr(path_cstr, '/');
+                filename = filename ? filename + 1 : path_cstr;
+
+                char buf[MAX_PATH];
+                strncpy(buf, filename, sizeof(buf) - 1);
+                buf[sizeof(buf) - 1] = '\0';
+                ImGui::SetNextItemWidth(250);
+                ImGui::InputText("##filepath", buf, sizeof(buf), ImGuiInputTextFlags_ReadOnly);
+                if (ImGui::IsItemHovered() && ImGui::GetIO().KeyShift)
+                    ImGui::SetTooltip("%s", cue_tracks[i].file_path.c_str());
+
+                ImGui::SameLine();
+                if (ImGui::Button("Browse..."))
+                {
+                    OPENFILENAMEA ofn = {};
+                    ofn.lStructSize = sizeof(ofn);
+                    char fname[MAX_PATH] = "";
+                    ofn.lpstrFile = fname;
+                    ofn.nMaxFile = MAX_PATH;
+                    ofn.lpstrFilter = "All files\0*.*\0";
+                    ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
+                    const char *init = _config.last_browse_dir.empty() ? nullptr : _config.last_browse_dir.c_str();
+                    ofn.lpstrInitialDir = init;
+                    if (GetOpenFileNameA(&ofn))
+                    {
+                        cue_tracks[i].file_path = fname;
+                        char dir_buf[MAX_PATH];
+                        snprintf(dir_buf, sizeof(dir_buf), "%s", fname);
+                        char *slash = strrchr(dir_buf, '\\');
+                        if (slash)
+                            *slash = '\0';
+                        _config.last_browse_dir = dir_buf;
+                    }
+                }
+                ImGui::SetNextItemWidth(100);
+                const char *file_types[] = {"BINARY", "MOTOROLA", "WAVE", "MP3", "AIFF"};
+                ImGui::Combo("File type", &cue_tracks[i].file_type, file_types, IM_ARRAYSIZE(file_types));
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                    ImGui::SetTooltip("BINARY: standard raw disc image.\nWAVE: uncompressed audio data.\nMP3 / AIFF: supported by some burners, but WAVE / BINARY is recommended.");
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(120);
+                const char *track_modes[] = {"MODE1/2352", "AUDIO", "MODE2/2352", "MODE1/2048", "MODE2/2048", "MODE2/2336", "CDI/2336", "CDI/2352"};
+                if (ImGui::Combo("Track mode", &cue_tracks[i].track_mode, track_modes, IM_ARRAYSIZE(track_modes)))
+                {
+                    cue_tracks[i].index0 = "";
+                    cue_tracks[i].index1 = "00:00:00";
+                }
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                    ImGui::SetTooltip("MODE1/2352: standard CD-ROM data.\nAUDIO: standard Audio CD track.\nMODE2/2352: CD-ROM XA data.");
+                char t_buf[128];
+                strncpy(t_buf, cue_tracks[i].title.c_str(), sizeof(t_buf) - 1);
+                t_buf[sizeof(t_buf) - 1] = '\0';
+                ImGui::SetNextItemWidth(120);
+                if (ImGui::InputText("Title", t_buf, sizeof(t_buf)))
+                    cue_tracks[i].title = t_buf;
+                ImGui::SameLine();
+                char p_buf[128];
+                strncpy(p_buf, cue_tracks[i].performer.c_str(), sizeof(p_buf) - 1);
+                p_buf[sizeof(p_buf) - 1] = '\0';
+                ImGui::SetNextItemWidth(120);
+                if (ImGui::InputText("Performer", p_buf, sizeof(p_buf)))
+                    cue_tracks[i].performer = p_buf;
+                char pg_buf[32];
+                strncpy(pg_buf, cue_tracks[i].pregap.c_str(), sizeof(pg_buf) - 1);
+                pg_buf[sizeof(pg_buf) - 1] = '\0';
+                ImGui::SetNextItemWidth(80);
+                if (ImGui::InputText("PREGAP", pg_buf, sizeof(pg_buf)))
+                    cue_tracks[i].pregap = pg_buf;
+                ImGui::SameLine();
+                char pog_buf[32];
+                strncpy(pog_buf, cue_tracks[i].postgap.c_str(), sizeof(pog_buf) - 1);
+                pog_buf[sizeof(pog_buf) - 1] = '\0';
+                ImGui::SetNextItemWidth(80);
+                if (ImGui::InputText("POSTGAP", pog_buf, sizeof(pog_buf)))
+                    cue_tracks[i].postgap = pog_buf;
+                char idx0_buf[32];
+                strncpy(idx0_buf, cue_tracks[i].index0.c_str(), sizeof(idx0_buf) - 1);
+                idx0_buf[sizeof(idx0_buf) - 1] = '\0';
+                ImGui::SetNextItemWidth(80);
+                if (ImGui::InputText("INDEX 00", idx0_buf, sizeof(idx0_buf)))
+                    cue_tracks[i].index0 = idx0_buf;
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                    ImGui::SetTooltip("INDEX 00 specifies the start of the pregap (silence) before the track.\nFormat is MM:SS:FF (Frames are 0-74).");
+                ImGui::SameLine();
+                char idx1_buf[32];
+                strncpy(idx1_buf, cue_tracks[i].index1.c_str(), sizeof(idx1_buf) - 1);
+                idx1_buf[sizeof(idx1_buf) - 1] = '\0';
+                ImGui::SetNextItemWidth(80);
+                if (ImGui::InputText("INDEX 01", idx1_buf, sizeof(idx1_buf)))
+                    cue_tracks[i].index1 = idx1_buf;
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                    ImGui::SetTooltip("INDEX 01 specifies the actual start of the track data.\nFormat is MM:SS:FF (frames are 0-74).");
+                if (ImGui::Button("Remove track"))
+                {
+                    cue_tracks.erase(cue_tracks.begin() + i);
+                    ImGui::PopID();
+                    break;
+                }
+                ImGui::Separator();
+                ImGui::PopID();
+            }
+            ImGui::EndChild();
+            if (ImGui::Button("Add track"))
+            {
+                cue_track t;
+                t.performer = cue_perf;
+                cue_tracks.push_back(t);
+                cue_error.clear();
+            }
+            ImGui::Spacing();
+            ImGui::Checkbox("Write absolute origin paths to CUE", &cue_origin_paths);
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("How PABS handles provided tracks.\n\nGiven this option is ticked, PABS will append the absolute PATHS\nof selected files to the CUE file. Else; the CUE file will assume\nthat the tracks live in the same directory as the CUE file.");
+            ImGui::Separator();
+            ImGui::Spacing();
+            if (!cue_error.empty())
+            {
+                ImGui::TextColored(ImVec4(1, 0.3f, 0.3f, 1), "%s", cue_error.c_str());
+                ImGui::Spacing();
+            }
+            if (ImGui::Button("Save CUE", ImVec2(100, 0)))
+            {
+                cue_error.clear();
+                bool valid = true;
+                if (cue_tracks.empty())
+                {
+                    cue_error = "Cannot save an empty CUE sheet; add at least one track.";
+                    valid = false;
+                }
+                for (auto &t : cue_tracks)
+                {
+                    if (t.file_path.empty())
+                    {
+                        cue_error = "One or more tracks have an empty file path.";
+                        valid = false;
+                        break;
+                    }
+                    if (!is_valid_index(t.index0) || !is_valid_index(t.index1) || !is_valid_index(t.pregap) || !is_valid_index(t.postgap))
+                    {
+                        cue_error = "Invalid time format (MM:SS:FF); seconds < 60, frames < 75.";
+                        valid = false;
+                        break;
+                    }
+                }
+                if (valid)
+                {
+                    OPENFILENAMEA ofn = {};
+                    ofn.lStructSize = sizeof(ofn);
+                    char fname[MAX_PATH] = "";
+                    ofn.lpstrFile = fname;
+                    ofn.nMaxFile = MAX_PATH;
+                    ofn.lpstrFilter = "CUE files\0*.cue\0";
+                    ofn.lpstrDefExt = "cue";
+                    ofn.Flags = OFN_EXPLORER | OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY;
+                    if (GetSaveFileNameA(&ofn))
+                    {
+                        std::ofstream f(fname);
+                        if (cue_title[0])
+                            f << "TITLE \"" << cue_title << "\"\n";
+                        if (cue_perf[0])
+                            f << "PERFORMER \"" << cue_perf << "\"\n";
+
+                        for (size_t i = 0; i < cue_tracks.size(); ++i)
+                        {
+                            const char *ft = "BINARY";
+                            if (cue_tracks[i].file_type == 1)
+                                ft = "MOTOROLA";
+                            else if (cue_tracks[i].file_type == 2)
+                                ft = "WAVE";
+                            else if (cue_tracks[i].file_type == 3)
+                                ft = "MP3";
+                            else if (cue_tracks[i].file_type == 4)
+                                ft = "AIFF";
+                            const char *tm = "MODE1/2352";
+                            if (cue_tracks[i].track_mode == 1)
+                                tm = "AUDIO";
+                            else if (cue_tracks[i].track_mode == 2)
+                                tm = "MODE2/2352"; // m; Some burners won't accept names like MODE2 / 2352
+                            else if (cue_tracks[i].track_mode == 3)
+                                tm = "MODE1/2048"; // >> so do NOT add gaps between the blokes.
+                            else if (cue_tracks[i].track_mode == 4)
+                                tm = "MODE2/2048"; // c; might bother me, but sure
+                            else if (cue_tracks[i].track_mode == 5)
+                                tm = "MODE2/2336";
+                            else if (cue_tracks[i].track_mode == 6)
+                                tm = "CDI/2336";
+                            else if (cue_tracks[i].track_mode == 7)
+                                tm = "CDI/2352";
+
+                            const char *base_name = cue_tracks[i].file_path.c_str();
+                            if (!cue_origin_paths)
+                            {
+                                const char *slash = strrchr(base_name, '\\');
+                                if (slash)
+                                    base_name = slash + 1;
+                                else
+                                {
+                                    slash = strrchr(base_name, '/');
+                                    if (slash)
+                                        base_name = slash + 1;
+                                }
+                            }
+                            if (*base_name == '\0')
+                                base_name = cue_tracks[i].file_path.c_str();
+                            f << "FILE \"" << base_name << "\" " << ft << "\n";
+                            f << "  TRACK " << ((i + 1) < 10 ? "0" : "") << (i + 1) << " " << tm << "\n";
+                            if (!cue_tracks[i].title.empty())
+                                f << "    TITLE \"" << cue_tracks[i].title << "\"\n";
+                            if (!cue_tracks[i].performer.empty())
+                                f << "    PERFORMER \"" << cue_tracks[i].performer << "\"\n";
+                            if (!cue_tracks[i].pregap.empty())
+                                f << "    PREGAP " << cue_tracks[i].pregap << "\n";
+                            if (!cue_tracks[i].index0.empty())
+                                f << "    INDEX 00 " << cue_tracks[i].index0 << "\n";
+                            if (!cue_tracks[i].index1.empty())
+                                f << "    INDEX 01 " << cue_tracks[i].index1 << "\n";
+                            if (!cue_tracks[i].postgap.empty())
+                                f << "    POSTGAP " << cue_tracks[i].postgap << "\n";
+                        }
+                        cue_is_active = false;
+                    }
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(100, 0)))
+            {
+                cue_is_active = false;
+            }
+        }
+        ImGui::End();
+    }
+    if (dvd_dialog)
+    {
+        dvd_is_active = true;
+        dvd_dialog = false;
+    }
+    if (dvd_is_active)
+    {
+        ImGuiWindowClass window_class;
+        window_class.ViewportFlagsOverrideClear = ImGuiViewportFlags_NoTaskBarIcon;
+        ImGui::SetNextWindowClass(&window_class);
+        if (ImGui::Begin("Create DVD file", &dvd_is_active, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::Text("ISO path:");
             ImGui::SetNextItemWidth(300);
-            if (ImGui::InputText("##filepath", buf, sizeof(buf)))
-                cue_tracks[i].file_path = buf;
+            ImGui::InputText("##iso_path", dvd_iso_path, sizeof(dvd_iso_path));
             ImGui::SameLine();
             if (ImGui::Button("Browse..."))
             {
@@ -333,310 +608,76 @@ void cd_creators() // m; In reality Common doesn't use these functions one bit,
                 char fname[MAX_PATH] = "";
                 ofn.lpstrFile = fname;
                 ofn.nMaxFile = MAX_PATH;
-                ofn.lpstrFilter = "All files\0*.*\0";
+                ofn.lpstrFilter = "ISO files\0*.iso;*.img\0All files\0*.*\0";
                 ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
-                const char *init = _config.last_browse_dir.empty() ? nullptr : _config.last_browse_dir.c_str();
-                ofn.lpstrInitialDir = init;
                 if (GetOpenFileNameA(&ofn))
                 {
-                    cue_tracks[i].file_path = fname;
-                    char dir_buf[MAX_PATH];
-                    snprintf(dir_buf, sizeof(dir_buf), "%s", fname);
-                    char *slash = strrchr(dir_buf, '\\');
-                    if (slash)
-                        *slash = '\0';
-                    _config.last_browse_dir = dir_buf;
+                    snprintf(dvd_iso_path, sizeof(dvd_iso_path), "%s", fname);
                 }
             }
-            ImGui::SetNextItemWidth(100);
-            const char *file_types[] = {"BINARY", "MOTOROLA", "WAVE", "MP3", "AIFF"};
-            ImGui::Combo("File type", &cue_tracks[i].file_type, file_types, IM_ARRAYSIZE(file_types));
+            ImGui::Text("Layer break LBA:");
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("BINARY: standard raw disc image.\nWAVE: uncompressed audio data.\nMP3 / AIFF: supported by some burners, but WAVE / BINARY is recommended.");
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(120);
-            const char *track_modes[] = {"MODE1/2352", "AUDIO", "MODE2/2352", "MODE1/2048", "MODE2/2048", "MODE2/2336", "CDI/2336", "CDI/2352"};
-            if (ImGui::Combo("Track mode", &cue_tracks[i].track_mode, track_modes, IM_ARRAYSIZE(track_modes)))
-            {
-                cue_tracks[i].index0 = "";
-                cue_tracks[i].index1 = "00:00:00";
-            }
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("MODE1/2352: standard CD-ROM data.\nAUDIO: standard Audio CD track.\nMODE2/2352: CD-ROM XA data.");
-            char t_buf[128];
-            strncpy(t_buf, cue_tracks[i].title.c_str(), sizeof(t_buf) - 1);
-            t_buf[sizeof(t_buf) - 1] = '\0';
-            ImGui::SetNextItemWidth(120);
-            if (ImGui::InputText("Title", t_buf, sizeof(t_buf)))
-                cue_tracks[i].title = t_buf;
-            ImGui::SameLine();
-            char p_buf[128];
-            strncpy(p_buf, cue_tracks[i].performer.c_str(), sizeof(p_buf) - 1);
-            p_buf[sizeof(p_buf) - 1] = '\0';
-            ImGui::SetNextItemWidth(120);
-            if (ImGui::InputText("Performer", p_buf, sizeof(p_buf)))
-                cue_tracks[i].performer = p_buf;
-            char pg_buf[32];
-            strncpy(pg_buf, cue_tracks[i].pregap.c_str(), sizeof(pg_buf) - 1);
-            pg_buf[sizeof(pg_buf) - 1] = '\0';
-            ImGui::SetNextItemWidth(80);
-            if (ImGui::InputText("PREGAP", pg_buf, sizeof(pg_buf)))
-                cue_tracks[i].pregap = pg_buf;
-            ImGui::SameLine();
-            char pog_buf[32];
-            strncpy(pog_buf, cue_tracks[i].postgap.c_str(), sizeof(pog_buf) - 1);
-            pog_buf[sizeof(pog_buf) - 1] = '\0';
-            ImGui::SetNextItemWidth(80);
-            if (ImGui::InputText("POSTGAP", pog_buf, sizeof(pog_buf)))
-                cue_tracks[i].postgap = pog_buf;
-            char idx0_buf[32];
-            strncpy(idx0_buf, cue_tracks[i].index0.c_str(), sizeof(idx0_buf) - 1);
-            idx0_buf[sizeof(idx0_buf) - 1] = '\0';
-            ImGui::SetNextItemWidth(80);
-            if (ImGui::InputText("INDEX 00", idx0_buf, sizeof(idx0_buf)))
-                cue_tracks[i].index0 = idx0_buf;
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("INDEX 00 specifies the start of the pregap (silence) before the track.\nFormat is MM:SS:FF (Frames are 0-74).");
-            ImGui::SameLine();
-            char idx1_buf[32];
-            strncpy(idx1_buf, cue_tracks[i].index1.c_str(), sizeof(idx1_buf) - 1);
-            idx1_buf[sizeof(idx1_buf) - 1] = '\0';
-            ImGui::SetNextItemWidth(80);
-            if (ImGui::InputText("INDEX 01", idx1_buf, sizeof(idx1_buf)))
-                cue_tracks[i].index1 = idx1_buf;
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("INDEX 01 specifies the actual start of the track data.\nFormat is MM:SS:FF (frames are 0-74).");
-            if (ImGui::Button("Remove track"))
-            {
-                cue_tracks.erase(cue_tracks.begin() + i);
-                ImGui::PopID();
-                break;
-            }
+                ImGui::SetTooltip("Make sure you only set a layer break for Dual-Layer (DVD+R DL) ISOs!!!\nSetting this for a Single-Layer (DVD-R/DVD+R) image will cause burn failures.");
+            ImGui::SetNextItemWidth(150);
+            ImGui::InputText("##layer_break", dvd_layer_break, sizeof(dvd_layer_break));
+            ImGui::Spacing();
             ImGui::Separator();
-            ImGui::PopID();
-        }
-        ImGui::EndChild();
-        if (ImGui::Button("Add track"))
-        {
-            cue_tracks.push_back({});
-            cue_error.clear();
-        }
-        ImGui::Spacing();
-        ImGui::Checkbox("Write absolute origin paths to CUE", &cue_origin_paths);
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-            ImGui::SetTooltip("How PABS handles provided tracks.\n\nGiven this option is ticked, PABS will append the absolute PATHS\nof selected files to the CUE file. Else; the CUE file will assume\nthat the tracks live in the same directory as the CUE file.");
-        ImGui::Separator();
-        ImGui::Spacing();
-        if (!cue_error.empty())
-        {
-            ImGui::TextColored(ImVec4(1, 0.3f, 0.3f, 1), "%s", cue_error.c_str());
             ImGui::Spacing();
-        }
-        if (ImGui::Button("Save CUE", ImVec2(100, 0)))
-        {
-            cue_error.clear();
-            bool valid = true;
-            if (cue_tracks.empty())
+            if (!dvd_error.empty())
             {
-                cue_error = "Cannot save an empty CUE sheet; add at least one track.";
-                valid = false;
+                ImGui::TextColored(ImVec4(1, 0.3f, 0.3f, 1), "%s", dvd_error.c_str());
+                ImGui::Spacing();
             }
-            for (auto &t : cue_tracks)
+            if (ImGui::Button("Save DVD", ImVec2(100, 0)))
             {
-                if (t.file_path.empty())
+                dvd_error.clear();
+                if (strlen(dvd_iso_path) == 0)
                 {
-                    cue_error = "One or more tracks have an empty file path.";
-                    valid = false;
-                    break;
+                    dvd_error = "Please browse or enter a path to an ISO file.";
                 }
-                if (!is_valid_index(t.index0) || !is_valid_index(t.index1) || !is_valid_index(t.pregap) || !is_valid_index(t.postgap))
+                else
                 {
-                    cue_error = "Invalid time format (MM:SS:FF); seconds < 60, frames < 75.";
-                    valid = false;
-                    break;
-                }
-            }
-            if (valid)
-            {
-                OPENFILENAMEA ofn = {};
-                ofn.lStructSize = sizeof(ofn);
-                char fname[MAX_PATH] = "";
-                ofn.lpstrFile = fname;
-                ofn.nMaxFile = MAX_PATH;
-                ofn.lpstrFilter = "CUE files\0*.cue\0";
-                ofn.lpstrDefExt = "cue";
-                ofn.Flags = OFN_EXPLORER | OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY;
-                if (GetSaveFileNameA(&ofn))
-                {
-                    std::ofstream f(fname);
-                    if (cue_title[0])
-                        f << "TITLE \"" << cue_title << "\"\n";
-                    if (cue_perf[0])
-                        f << "PERFORMER \"" << cue_perf << "\"\n";
-
-                    for (size_t i = 0; i < cue_tracks.size(); ++i)
+                    OPENFILENAMEA ofn = {};
+                    ofn.lStructSize = sizeof(ofn);
+                    char fname[MAX_PATH] = "";
+                    if (strlen(dvd_iso_path) > 0)
                     {
-                        const char *ft = "BINARY";
-                        if (cue_tracks[i].file_type == 1)
-                            ft = "MOTOROLA";
-                        else if (cue_tracks[i].file_type == 2)
-                            ft = "WAVE";
-                        else if (cue_tracks[i].file_type == 3)
-                            ft = "MP3";
-                        else if (cue_tracks[i].file_type == 4)
-                            ft = "AIFF";
-                        const char *tm = "MODE1/2352";
-                        if (cue_tracks[i].track_mode == 1)
-                            tm = "AUDIO";
-                        else if (cue_tracks[i].track_mode == 2)
-                            tm = "MODE2/2352"; // m; Some burners won't accept names like MODE2 / 2352
-                        else if (cue_tracks[i].track_mode == 3)
-                            tm = "MODE1/2048"; // >> so do NOT add gaps between the blokes.
-                        else if (cue_tracks[i].track_mode == 4)
-                            tm = "MODE2/2048"; // c; might bother me, but sure
-                        else if (cue_tracks[i].track_mode == 5)
-                            tm = "MODE2/2336";
-                        else if (cue_tracks[i].track_mode == 6)
-                            tm = "CDI/2336";
-                        else if (cue_tracks[i].track_mode == 7)
-                            tm = "CDI/2352";
-
-                        const char *base_name = cue_tracks[i].file_path.c_str();
-                        if (!cue_origin_paths)
-                        {
-                            const char *slash = strrchr(base_name, '\\');
-                            if (slash)
-                                base_name = slash + 1;
-                            else
-                            {
-                                slash = strrchr(base_name, '/');
-                                if (slash)
-                                    base_name = slash + 1;
-                            }
-                        }
-                        if (*base_name == '\0')
-                            base_name = cue_tracks[i].file_path.c_str();
-                        f << "FILE \"" << base_name << "\" " << ft << "\n";
-                        f << "  TRACK " << ((i + 1) < 10 ? "0" : "") << (i + 1) << " " << tm << "\n";
-                        if (!cue_tracks[i].title.empty())
-                            f << "    TITLE \"" << cue_tracks[i].title << "\"\n";
-                        if (!cue_tracks[i].performer.empty())
-                            f << "    PERFORMER \"" << cue_tracks[i].performer << "\"\n";
-                        if (!cue_tracks[i].pregap.empty())
-                            f << "    PREGAP " << cue_tracks[i].pregap << "\n";
-                        if (!cue_tracks[i].index0.empty())
-                            f << "    INDEX 00 " << cue_tracks[i].index0 << "\n";
-                        if (!cue_tracks[i].index1.empty())
-                            f << "    INDEX 01 " << cue_tracks[i].index1 << "\n";
-                        if (!cue_tracks[i].postgap.empty())
-                            f << "    POSTGAP " << cue_tracks[i].postgap << "\n";
+                        snprintf(fname, sizeof(fname), "%s", dvd_iso_path);
+                        char *ext = strrchr(fname, '.');
+                        if (ext)
+                            strcpy(ext, ".dvd");
+                        else
+                            strcat(fname, ".dvd");
                     }
-                    ImGui::CloseCurrentPopup();
+                    ofn.lpstrFile = fname;
+                    ofn.nMaxFile = MAX_PATH;
+                    ofn.lpstrFilter = "DVD files\0*.dvd\0";
+                    ofn.lpstrDefExt = "dvd";
+                    ofn.Flags = OFN_EXPLORER | OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY;
+                    if (GetSaveFileNameA(&ofn))
+                    {
+                        std::ofstream f(fname);
+                        f << "MediaType=DVD\n";
+                        f << "LayerBreak=" << dvd_layer_break << "\n";
+                        const char *base_name = strrchr(dvd_iso_path, '\\');
+                        if (base_name)
+                            base_name++;
+                        else
+                            base_name = dvd_iso_path;
+                        f << "ISO=" << base_name << "\n";
+                        dvd_is_active = false;
+                    }
                 }
             }
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(100, 0)))
-        {
-            ImGui::CloseCurrentPopup();
-            cue_is_active = false;
-        }
-        ImGui::EndPopup();
-    }
-    else
-    {
-        cue_is_active = false;
-    }
-
-    if (dvd_dialog)
-    {
-        ImGui::OpenPopup("Create DVD file##create_dvd_dialog");
-        dvd_dialog = false;
-    }
-    ImGui::SetNextWindowPos(ImVec2(ImGui::GetMainViewport()->WorkPos.x + ImGui::GetMainViewport()->WorkSize.x * 0.5f, ImGui::GetMainViewport()->WorkPos.y + ImGui::GetMainViewport()->WorkSize.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (ImGui::BeginPopupModal("Create DVD file##create_dvd_dialog", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
-    {
-        ImGui::Text("ISO path:");
-        ImGui::SetNextItemWidth(300);
-        ImGui::InputText("##iso_path", dvd_iso_path, sizeof(dvd_iso_path));
-        ImGui::SameLine();
-        if (ImGui::Button("Browse..."))
-        {
-            OPENFILENAMEA ofn = {};
-            ofn.lStructSize = sizeof(ofn);
-            char fname[MAX_PATH] = "";
-            ofn.lpstrFile = fname;
-            ofn.nMaxFile = MAX_PATH;
-            ofn.lpstrFilter = "ISO files\0*.iso;*.img\0All files\0*.*\0";
-            ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
-            if (GetOpenFileNameA(&ofn))
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(100, 0)))
             {
-                snprintf(dvd_iso_path, sizeof(dvd_iso_path), "%s", fname);
+                dvd_is_active = false;
             }
         }
-        ImGui::Text("Layer break LBA:");
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-            ImGui::SetTooltip("Make sure you only set a layer break for Dual-Layer (DVD+R DL) ISOs!!!\nSetting this for a Single-Layer (DVD-R/DVD+R) image will cause burn failures.");
-        ImGui::SetNextItemWidth(150);
-        ImGui::InputText("##layer_break", dvd_layer_break, sizeof(dvd_layer_break));
-        ImGui::Spacing();
-        ImGui::Separator();
-        ImGui::Spacing();
-        if (!dvd_error.empty())
-        {
-            ImGui::TextColored(ImVec4(1, 0.3f, 0.3f, 1), "%s", dvd_error.c_str());
-            ImGui::Spacing();
-        }
-        if (ImGui::Button("Save DVD", ImVec2(100, 0)))
-        {
-            dvd_error.clear();
-            if (strlen(dvd_iso_path) == 0)
-            {
-                dvd_error = "Please browse or enter a path to an ISO file.";
-            }
-            else
-            {
-                OPENFILENAMEA ofn = {};
-                ofn.lStructSize = sizeof(ofn);
-                char fname[MAX_PATH] = "";
-                if (strlen(dvd_iso_path) > 0)
-                {
-                    snprintf(fname, sizeof(fname), "%s", dvd_iso_path);
-                    char *ext = strrchr(fname, '.');
-                    if (ext)
-                        strcpy(ext, ".dvd");
-                    else
-                        strcat(fname, ".dvd");
-                }
-                ofn.lpstrFile = fname;
-                ofn.nMaxFile = MAX_PATH;
-                ofn.lpstrFilter = "DVD files\0*.dvd\0";
-                ofn.lpstrDefExt = "dvd";
-                ofn.Flags = OFN_EXPLORER | OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY;
-                if (GetSaveFileNameA(&ofn))
-                {
-                    std::ofstream f(fname);
-                    f << "MediaType=DVD\n";
-                    f << "LayerBreak=" << dvd_layer_break << "\n";
-                    const char *base_name = strrchr(dvd_iso_path, '\\');
-                    if (base_name)
-                        base_name++;
-                    else
-                        base_name = dvd_iso_path;
-                    f << "ISO=" << base_name << "\n";
-                    ImGui::CloseCurrentPopup();
-                }
-            }
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(100, 0)))
-        {
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::EndPopup();
+        ImGui::End();
     }
 }
-
 static bool show_about = false;
 void _trigger_about()
 {
