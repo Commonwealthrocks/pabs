@@ -1,12 +1,14 @@
 // __verify.cpp
-/// last updated: 08/05/2026
+// last updated: 27/05/2026
 // win32; cmake -G "Ninja" ..
 // win32; ninja
 #include "__verify.hpp"
+#include "__imapi_com.hpp"
 #include "logger.hpp"
 #include <windows.h>
 #include <winioctl.h>
 #include <ntddcdrm.h>
+#include <shlobj.h>
 #include <chrono>
 #define SET_STATUS(ctx, text)                                                 \
     do                                                                        \
@@ -16,6 +18,7 @@
     } while (0)
 static void verify_thread_func(verify_context *ctx)
 {
+    ctx->is_running = true;
     LOG_INFO("Verify engine starting");
     SET_STATUS(ctx, "Initializing...");
     HANDLE hDrive = INVALID_HANDLE_VALUE;
@@ -408,6 +411,9 @@ static void verify_thread_func(verify_context *ctx)
                 LOG_INFO("Ejecting disc");
                 DWORD returned = 0;
                 DeviceIoControl(hDrive, IOCTL_STORAGE_EJECT_MEDIA, nullptr, 0, nullptr, 0, &returned, nullptr);
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                std::wstring wDriveStr = imapi_u8_to_w(ctx->drive->info.path);
+                SHChangeNotify(SHCNE_MEDIAREMOVED, SHCNF_PATHW, wDriveStr.c_str(), NULL);
             }
             ctx->progress_percent = 100.0f;
             ctx->read_speed_mbps = 0.0f;
@@ -455,7 +461,6 @@ bool verify_start(verify_context &ctx)
 {
     if (ctx.is_running)
         return false;
-    ctx.is_running = true;
     ctx.abort_requested = false;
     ctx.disc_removed = false;
     ctx.progress_percent = 0.0f;

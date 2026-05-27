@@ -1,5 +1,5 @@
 // __verify.hpp
-// last updated: 23/05/2026
+// last updated: 27/05/2026
 // win32; cmake -G "Ninja" ..
 // win32; ninja
 #pragma once
