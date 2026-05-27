@@ -1,5 +1,5 @@
 // ui.cpp
-// last updated: 27/05/2026
+// last updated: 28/05/2026
 // win32; cmake -G "Ninja" ..
 // win32; ninja
 #include "ui.hpp"
@@ -21,6 +21,7 @@
 #include <shlwapi.h>
 #include <shlobj.h>
 #include <winioctl.h>
+#include <ntddcdrm.h>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -41,6 +42,8 @@
 #pragma GCC diagnostic pop
 static burn_context burn_ctx;
 static read_context read_ctx;
+static bool read_is_audio = false;
+static std::string read_audio_out_dir;
 static image_context image_ctx;
 static drive_handle burn_drive = {};
 static drive_handle read_drive = {};
@@ -1524,8 +1527,42 @@ void gui_render(drive_info drives[], int drive_count)
         ImGui::EndGroup();
         ImGui::PopStyleVar();
     }
-    else if (_app_mode == app_mode::read_mode) // c; disc to iso
+    else if (_app_mode == app_mode::read_mode) // c; disc to iso / audio rip
     {
+        if (!read_ctx.is_running && drive_count > 0 && selected_drive_idx < drive_count && drives[selected_drive_idx].disc_present)
+        {
+            static int last_probed_drive = -1;
+            static bool last_probed_media = false;
+            bool cur_media = drives[selected_drive_idx].disc_present;
+            if (last_probed_drive != selected_drive_idx || last_probed_media != cur_media)
+            {
+                last_probed_drive = selected_drive_idx;
+                last_probed_media = cur_media;
+                read_is_audio = false;
+                drive_handle probe_h = drives_open(drives[selected_drive_idx].path);
+                if (probe_h.valid)
+                {
+                    CDROM_TOC probe_toc;
+                    ZeroMemory(&probe_toc, sizeof(probe_toc));
+                    DWORD probe_ret = 0;
+                    if (DeviceIoControl(probe_h.win_handle, IOCTL_CDROM_READ_TOC, nullptr, 0, &probe_toc, sizeof(probe_toc), &probe_ret, nullptr))
+                    {
+                        bool any_data = false;
+                        for (int t = probe_toc.FirstTrack; t <= probe_toc.LastTrack; ++t)
+                        {
+                            int idx = t - probe_toc.FirstTrack;
+                            if (idx >= 0 && idx < MAXIMUM_NUMBER_TRACKS && (probe_toc.TrackData[idx].Control & 0x04))
+                            {
+                                any_data = true;
+                                break;
+                            }
+                        }
+                        read_is_audio = !any_data;
+                    }
+                    drives_close(probe_h);
+                }
+            }
+        }
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 10.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 4));
         ImGui::BeginDisabled(any_engine_running);
@@ -1564,24 +1601,57 @@ void gui_render(drive_info drives[], int drive_count)
         {
             ImGui::TextDisabled("no reader / writer found");
         }
+        if (read_is_audio)
+            ImGui::TextDisabled("Disc type: Audio CD");
         _status_line(read_ctx.is_running);
         ImGui::EndChild();
         ImGui::BeginChild("output", ImVec2(0, 75), true);
         ImGui::TextDisabled("Output");
         ImGui::Separator();
         ImGui::AlignTextToFramePadding();
-        ImGui::Text("Image:");
-        ImGui::SameLine();
-        char path_buf[MAX_PATH];
-        strncpy(path_buf, _config.last_read_path.c_str(), sizeof(path_buf) - 1);
-        ImGui::SetNextItemWidth(-70);
-        if (ImGui::InputText("##img_path", path_buf, sizeof(path_buf), ImGuiInputTextFlags_ReadOnly))
+        if (read_is_audio)
         {
+            ImGui::Text("Folder:");
+            ImGui::SameLine();
+            char dir_disp[MAX_PATH];
+            snprintf(dir_disp, sizeof(dir_disp), "%s", read_audio_out_dir.c_str());
+            ImGui::SetNextItemWidth(-70);
+            ImGui::InputText("##rip_dir", dir_disp, sizeof(dir_disp), ImGuiInputTextFlags_ReadOnly);
+            ImGui::SameLine();
+            if (ImGui::Button("Browse...", ImVec2(60, 0)))
+            {
+                BROWSEINFOA bi = {};
+                bi.lpszTitle = "Select output folder for ripped tracks";
+                bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+                bi.lpfn = browse_folder_cb;
+                const char *init = _config.last_browse_dir.empty() ? nullptr : _config.last_browse_dir.c_str();
+                bi.lParam = (LPARAM)init;
+                PIDLIST_ABSOLUTE pidl = SHBrowseForFolderA(&bi);
+                if (pidl)
+                {
+                    char picked[MAX_PATH];
+                    if (SHGetPathFromIDListA(pidl, picked))
+                    {
+                        read_audio_out_dir = picked;
+                        _config.last_browse_dir = picked;
+                    }
+                    CoTaskMemFree(pidl);
+                }
+            }
         }
-        ImGui::SameLine();
-        if (ImGui::Button("Browse...", ImVec2(60, 0)))
+        else
         {
-            show_save_dialog();
+            ImGui::Text("Image:");
+            ImGui::SameLine();
+            char path_buf[MAX_PATH];
+            snprintf(path_buf, sizeof(path_buf), "%s", _config.last_read_path.c_str());
+            ImGui::SetNextItemWidth(-70);
+            ImGui::InputText("##img_path", path_buf, sizeof(path_buf), ImGuiInputTextFlags_ReadOnly);
+            ImGui::SameLine();
+            if (ImGui::Button("Browse...", ImVec2(60, 0)))
+            {
+                show_save_dialog();
+            }
         }
         ImGui::EndChild();
         ImGui::BeginChild("settings", ImVec2(0, 80), true);
@@ -1621,12 +1691,14 @@ void gui_render(drive_info drives[], int drive_count)
         }
         else
         {
-            if (button_w_icon("##btn_read", tex_read, "Read", ImVec2(130, 45)))
+            const char *read_btn_label = read_is_audio ? "Rip" : "Read";
+            if (button_w_icon("##btn_read", tex_read, read_btn_label, ImVec2(130, 45)))
             {
-                if (drive_count <= 0 || _config.last_read_path.empty())
+                bool output_ok = read_is_audio ? !read_audio_out_dir.empty() : !_config.last_read_path.empty();
+                if (drive_count <= 0 || !output_ok)
                 {
                     LOG_WARN("No valid drive and (or) output path");
-                    cd_error("ERROR", "No valid drive and (or) output path was selected.");
+                    cd_error("ERROR", read_is_audio ? "No output folder selected." : "No valid drive and (or) output path was selected.");
                 }
                 else if (!drives[selected_drive_idx].disc_present)
                 {
@@ -1651,7 +1723,8 @@ void gui_render(drive_info drives[], int drive_count)
                         }
                         else
                         {
-                            read_init(read_ctx, &read_drive, _config.last_read_path);
+                            std::string out = read_is_audio ? read_audio_out_dir : _config.last_read_path;
+                            read_init(read_ctx, &read_drive, out, read_is_audio);
                             read_start(read_ctx);
                         }
                     }
@@ -1817,7 +1890,7 @@ void gui_render(drive_info drives[], int drive_count)
                 if (image_ctx.has_udf)
                     detected = "UDF";
                 else if (image_ctx.has_joliet)
-                    detected = "Joliet (ISO 9660)";
+                    detected = "Joliet (ISO9660)";
                 else if (image_ctx.has_iso9660)
                     detected = "ISO9660";
                 else
