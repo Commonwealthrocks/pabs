@@ -1,5 +1,5 @@
 // ui.cpp
-// last updated: 23/05/2026
+// last updated: 27/05/2026
 // win32; cmake -G "Ninja" ..
 // win32; ninja
 #include "ui.hpp"
@@ -2359,14 +2359,28 @@ void gui_render(drive_info drives[], int drive_count)
             ofn.lpstrFile = filename;
             ofn.nMaxFile = sizeof(filename);
             ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_ALLOWMULTISELECT;
+            char initial_dir[MAX_PATH] = {0};
+            if (!_config.last_browse_dir.empty())
+            {
+                strncpy(initial_dir, _config.last_browse_dir.c_str(), sizeof(initial_dir) - 1);
+                ofn.lpstrInitialDir = initial_dir;
+            }
             if (GetOpenFileNameA(&ofn))
             {
                 if (filename[strlen(filename) + 1] == '\0')
                 {
+                    char dir_buf[MAX_PATH] = {0};
+                    strncpy(dir_buf, filename, sizeof(dir_buf) - 1);
+                    if (PathRemoveFileSpecA(dir_buf))
+                        _config.last_browse_dir = dir_buf;
                     audio_tracks.add_path(filename);
                 }
                 else
                 {
+                    char dir_buf[MAX_PATH] = {0};
+                    strncpy(dir_buf, filename, sizeof(dir_buf) - 1);
+                    if (PathRemoveFileSpecA(dir_buf))
+                        _config.last_browse_dir = dir_buf;
                     char *dir = filename;
                     char *file = filename + strlen(dir) + 1;
                     while (*file)
@@ -2820,8 +2834,18 @@ void gui_render(drive_info drives[], int drive_count)
             ofn.lpstrFile = iso_path;
             ofn.nMaxFile = sizeof(iso_path);
             ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
+            char initial_dir[MAX_PATH] = {0};
+            if (!_config.last_browse_dir.empty())
+            {
+                strncpy(initial_dir, _config.last_browse_dir.c_str(), sizeof(initial_dir) - 1);
+                ofn.lpstrInitialDir = initial_dir;
+            }
             if (GetOpenFileNameA(&ofn))
             {
+                char dir_buf[MAX_PATH] = {0};
+                strncpy(dir_buf, iso_path, sizeof(dir_buf) - 1);
+                if (PathRemoveFileSpecA(dir_buf))
+                    _config.last_browse_dir = dir_buf;
             }
         }
         ImGui::EndChild();
