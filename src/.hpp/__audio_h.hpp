@@ -23,6 +23,9 @@ struct audio_track
 struct audio_list
 {
     std::vector<audio_track> entries;
+    std::atomic<int> track_id{0};
+    std::atomic<int> pending_converts{0};
+    std::atomic<int> ok_converts{0};
     void add_path(const std::string &path);
     void rm_selected();
     void clear();

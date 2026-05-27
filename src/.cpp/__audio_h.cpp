@@ -42,10 +42,12 @@ static bool wav_header_maybe(const std::string &path, uint64_t &out_pcm_size)
         fclose(f);
         return false;
     }
-    uint16_t format = *(uint16_t *)(header + 20);
-    uint16_t channels = *(uint16_t *)(header + 22);
-    uint32_t rate = *(uint32_t *)(header + 24);
-    uint16_t bits_per_s = *(uint16_t *)(header + 34);
+    uint16_t format, channels, bits_per_s;
+    uint32_t rate, __size_field;
+    memcpy(&format, header + 20, 2);
+    memcpy(&channels, header + 22, 2);
+    memcpy(&rate, header + 24, 4);
+    memcpy(&bits_per_s, header + 34, 2);
     if (format != 1 || channels != 2 || rate != 44100 || bits_per_s != 16)
     {
         fclose(f);
@@ -54,7 +56,7 @@ static bool wav_header_maybe(const std::string &path, uint64_t &out_pcm_size)
     uint32_t __size = 0;
     if (memcmp(header + 36, "data", 4) == 0)
     {
-        __size = *(uint32_t *)(header + 40);
+        memcpy(&__size, header + 40, 4);
     }
     else
     {
@@ -87,9 +89,6 @@ static bool wav_buf_hdr(const uint8_t *buf, size_t len, uint64_t &out_pcm_size)
     out_pcm_size = __size;
     return true;
 }
-static int track_id = 0;
-static std::atomic<int> pending_converts{0};
-static std::atomic<int> ok_converts{0};
 void audio_list::add_path(const std::string &path)
 {
     std::lock_guard<std::mutex> lk(list_mutex);
@@ -127,10 +126,10 @@ void audio_list::add_path(const std::string &path)
         {
             std::string cache = cache_audio_dir();
             CreateDirectoryA(cache.c_str(), nullptr);
-            temp_wav = cache + "\\track_" + std::to_string(++track_id) + ".wav";
+            temp_wav = cache + "\\track_" + std::to_string(++this->track_id) + ".wav";
         }
-        ++pending_converts;
-        ++ok_converts;
+        ++this->pending_converts;
+        ++this->ok_converts;
         std::thread([this, path, temp_wav, to_disk]()
                     {
             uint64_t sz = 0;
@@ -159,21 +158,21 @@ void audio_list::add_path(const std::string &path)
                             it->pcm_ram = std::move(ram);
                         }
                         it->size_bytes = sz;
-                        int remaining = --pending_converts;
+                        int remaining = --this->pending_converts;
                         if (remaining == 0)
                         {
-                            int n = ok_converts.exchange(0);
+                            int n = this->ok_converts.exchange(0);
                             LOG_INFOF("Added %d track(s) to tracklist", n);
                         }
                     }
                     else
                     {
-                        --ok_converts;
+                        --this->ok_converts;
                         LOG_ERRF("Failed to decode: %s", path.c_str());
-                        int remaining = --pending_converts;
-                        if (remaining == 0 && ok_converts.load() > 0)
+                        int remaining = --this->pending_converts;
+                        if (remaining == 0 && this->ok_converts.load() > 0)
                         {
-                            int n = ok_converts.exchange(0);
+                            int n = this->ok_converts.exchange(0);
                             LOG_INFOF("Added %d track(s) to tracklist", n);
                         }
                         entries.erase(it);
@@ -301,6 +300,14 @@ public:
                 plibNewPosition->QuadPart -= 44;
             return hr;
         }
+        if (dwOrigin == STREAM_SEEK_END)
+        {
+            dlibMove.QuadPart -= 44;
+            HRESULT hr = m_base->Seek(dlibMove, dwOrigin, plibNewPosition);
+            if (SUCCEEDED(hr) && plibNewPosition && plibNewPosition->QuadPart >= 44)
+                plibNewPosition->QuadPart -= 44;
+            return hr;
+        }
         return m_base->Seek(dlibMove, dwOrigin, plibNewPosition);
     }
     STDMETHODIMP SetSize(ULARGE_INTEGER) override { return E_NOTIMPL; }
@@ -399,9 +406,15 @@ public:
 };
 static void audio_thread_func(audio_context *ctx)
 {
+    ctx->is_running = true;
     LOG_INFO("Audio engine starting");
     imapi_set_stat(ctx, "Initializing...");
-    if (!ctx->tracks || ctx->tracks->entries.empty())
+    std::vector<audio_track> track_snapshot;
+    {
+        std::lock_guard<std::mutex> lk(ctx->tracks->list_mutex);
+        track_snapshot = ctx->tracks->entries;
+    }
+    if (!ctx->tracks || track_snapshot.empty())
     {
         LOG_ERR("No tracks to burn");
         imapi_set_stat(ctx, "[ ERROR ] No tracks");
@@ -492,12 +505,12 @@ static void audio_thread_func(audio_context *ctx)
     {
         uint64_t total_size = ctx->tracks->total_size();
         uint64_t burned_so_far = 0;
-        LOG_INFOF("Writing %d files as raw audio data", (int)ctx->tracks->entries.size());
-        for (size_t i = 0; i < ctx->tracks->entries.size(); ++i)
+        LOG_INFOF("Writing %d files as raw audio data", (int)track_snapshot.size());
+        for (size_t i = 0; i < track_snapshot.size(); ++i)
         {
             if (ctx->abort_requested)
                 break;
-            const auto &entry = ctx->tracks->entries[i];
+            const auto &entry = track_snapshot[i];
             IStream *pFileStream = nullptr;
             if (!entry.pcm_ram.empty())
             {
@@ -573,7 +586,7 @@ static void audio_thread_func(audio_context *ctx)
                 imapi_dispatch_call(pRecorder, L"EjectMedia", DISPATCH_METHOD, nullptr, nullptr, 0);
                 std::this_thread::sleep_for(std::chrono::seconds(1));
                 std::wstring wDriveStr = imapi_u8_to_w(ctx->drive->info.path);
-                SHChangeNotify(SHCNE_MEDIAINSERTED, SHCNF_PATHW, wDriveStr.c_str(), NULL);
+                SHChangeNotify(SHCNE_MEDIAREMOVED, SHCNF_PATHW, wDriveStr.c_str(), NULL);
             }
         }
         else
@@ -627,7 +640,6 @@ bool audio_start(audio_context &ctx)
 {
     if (ctx.is_running)
         return false;
-    ctx.is_running = true;
     ctx.abort_requested = false;
     ctx.progress_percent = 0.0f;
     ctx.write_speed_mbps = 0.0f;
@@ -641,7 +653,15 @@ bool audio_start(audio_context &ctx)
         ctx.worker_thread->join();
         delete ctx.worker_thread;
     }
-    ctx.worker_thread = new std::thread(audio_thread_func, &ctx);
+    try
+    {
+        ctx.worker_thread = new std::thread(audio_thread_func, &ctx);
+    }
+    catch (const std::system_error &)
+    {
+        ctx.worker_thread = nullptr;
+        return false;
+    }
     return true;
 }
 void audio_abort(audio_context &ctx)
