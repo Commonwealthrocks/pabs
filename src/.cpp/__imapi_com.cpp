@@ -41,11 +41,16 @@ HRESULT imapi_dispatch_call(IDispatch *d, const wchar_t *name, WORD flags, VARIA
     EXCEPINFO ex = {};
     UINT arg_err = 0;
     hr = d->Invoke(dispid, IID_NULL, LOCALE_USER_DEFAULT, flags, &dp, ret, &ex, &arg_err);
-    if (FAILED(hr) && ex.bstrDescription)
+    if (ex.bstrDescription)
     {
-        std::wstring wdesc(ex.bstrDescription);
-        std::string desc(wdesc.begin(), wdesc.end());
-        LOG_ERRF("COM '%ls': %s", name, desc.c_str());
+        if (FAILED(hr))
+        {
+            int n = WideCharToMultiByte(CP_UTF8, 0, ex.bstrDescription, -1, nullptr, 0, nullptr, nullptr);
+            std::string desc(n > 0 ? n - 1 : 0, 0);
+            if (n > 0)
+                WideCharToMultiByte(CP_UTF8, 0, ex.bstrDescription, -1, &desc[0], n, nullptr, nullptr);
+            LOG_ERRF("COM '%ls': %s", name, desc.c_str());
+        }
         SysFreeString(ex.bstrDescription);
     }
     if (ex.bstrSource)
@@ -82,6 +87,8 @@ HRESULT imapi_find_recorder(IDispatch *pDiscMaster, const std::string &drive_vol
     HRESULT hr = imapi_dispatch_get(pDiscMaster, L"Count", &vCount);
     if (FAILED(hr))
         return hr;
+    if (vCount.vt != VT_I4)
+        return E_UNEXPECTED;
     for (LONG i = 0; i < vCount.lVal; ++i)
     {
         VARIANT vIndex;
@@ -106,28 +113,30 @@ HRESULT imapi_find_recorder(IDispatch *pDiscMaster, const std::string &drive_vol
                     {
                         SAFEARRAY *psa = vPaths.parray;
                         VARIANT *pData;
-                        SafeArrayAccessData(psa, (void **)&pData);
-                        LONG lBound, uBound;
-                        SafeArrayGetLBound(psa, 1, &lBound);
-                        SafeArrayGetUBound(psa, 1, &uBound);
-                        for (LONG j = lBound; j <= uBound; ++j)
+                        if (SUCCEEDED(SafeArrayAccessData(psa, (void **)&pData)))
                         {
-                            if (pData[j].vt == VT_BSTR)
+                            LONG lBound, uBound;
+                            SafeArrayGetLBound(psa, 1, &lBound);
+                            SafeArrayGetUBound(psa, 1, &uBound);
+                            for (LONG j = lBound; j <= uBound; ++j)
                             {
-                                std::wstring pathStr = pData[j].bstrVal;
-                                if (pathStr.length() >= 2)
+                                if (pData[j].vt == VT_BSTR)
                                 {
-                                    std::string narrow(pathStr.begin(), pathStr.begin() + 2);
-                                    if (narrow == target)
+                                    std::wstring pathStr = pData[j].bstrVal;
+                                    if (pathStr.length() >= 2)
                                     {
-                                        *ppRecorder = pTempRec;
-                                        (*ppRecorder)->AddRef();
-                                        break;
+                                        std::string narrow(pathStr.begin(), pathStr.begin() + 2);
+                                        if (_strnicmp(narrow.c_str(), target.c_str(), 2) == 0)
+                                        {
+                                            *ppRecorder = pTempRec;
+                                            (*ppRecorder)->AddRef();
+                                            break;
+                                        }
                                     }
                                 }
                             }
+                            SafeArrayUnaccessData(psa);
                         }
-                        SafeArrayUnaccessData(psa);
                     }
                     VariantClear(&vPaths);
                 }
