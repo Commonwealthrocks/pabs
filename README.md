@@ -12,6 +12,7 @@ PABS is still very early into development *(`v0.2a`)*. Some features may not wor
 ## **Features**
 - Burn `ISOs` to disc.
 - Rip discs to `ISO`.
+- Rip raw PCM audio to WAV files.
 - Build `ISOs` from selected files.
 - Burn discs from files.
 - Burn audio `CDs` *(**Red Book** standard)*.
