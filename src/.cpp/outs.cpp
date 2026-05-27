@@ -698,7 +698,7 @@ void cd_about()
         ImGui::TextDisabled("PYROFOREVER's actual burning software");
         ImGui::Separator();
         ImGui::Spacing();
-        ImGui::Text("Version:  0.1a");
+        ImGui::Text("Version:  v0.2a");
         ImGui::Text("Build:    " __DATE__ "  " __TIME__);
         ImGui::Spacing();
         ImGui::TextDisabled("Made by Common n' Mike.");
