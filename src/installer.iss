@@ -4,14 +4,14 @@
 
 [Setup]
 AppName=PABS
-AppVersion=0.1a
-AppVerName=PABS - PYROFOREVER's actual burning software v0.1a
+AppVersion=0.2a
+AppVerName=PABS - PYROFOREVER's actual burning software v0.2a
 AppPublisher=Commonwealthrocks
 AppCopyright=Copyright (C) 2026 Commonwealthrocks and Mike
 AppContact=common@gmailbutnotreally.xyz
 DefaultDirName={autopf}\PABS
 DisableDirPage=no
-OutputBaseFilename=setup_pabs_0.1a_win32
+OutputBaseFilename=setup_pabs_0.2a_win32
 Compression=lzma2/ultra64
 DefaultGroupName=PABS
 SolidCompression=yes
