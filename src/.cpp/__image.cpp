@@ -35,13 +35,23 @@ static bool cue_first_bin(const char *cue_path, std::string &bin_out)
         p += 5;
         while (*p == ' ' || *p == '\t')
             ++p;
-        if (*p != '"')
-            break;
-        ++p;
-        char *q = strchr(p, '"');
-        if (!q)
-            break;
-        *q = '\0';
+        if (*p == '"')
+        {
+            ++p;
+            char *q = strchr(p, '"');
+            if (!q)
+                break;
+            *q = '\0';
+        }
+        else
+        {
+            char *q = p;
+            while (*q && *q != ' ' && *q != '\t' && *q != '\r' && *q != '\n')
+                ++q;
+            *q = '\0';
+            if (*p == '\0')
+                break;
+        }
         bin_out = std::string(dir) + p;
         ok = true;
         break;
@@ -51,6 +61,7 @@ static bool cue_first_bin(const char *cue_path, std::string &bin_out)
 }
 bool image_open(image_context &ctx, const char *path)
 {
+    image_close(ctx);
     ctx.path = path;
     ctx.is_valid = false;
     ctx.total_bytes = 0;
@@ -106,7 +117,7 @@ bool image_open(image_context &ctx, const char *path)
         LOG_INFOF("MDS: using %s", p.c_str());
         ctx.path = p;
     }
-    ctx.win_handle = CreateFileA(ctx.path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    ctx.win_handle = CreateFileA(ctx.path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
     if (ctx.win_handle == INVALID_HANDLE_VALUE)
     {
         LOG_ERRF("Failed to open %s", ctx.path.c_str());
@@ -187,7 +198,7 @@ bool image_read_blocks(image_context &ctx, uint64_t start_sector, uint32_t secto
     {
         return false;
     }
-    DWORD bytes_to_read = sector_count * 2048;
+    DWORD bytes_to_read = (DWORD)((uint64_t)sector_count * 2048);
     DWORD bytes_read = 0;
     if (!ReadFile(ctx.win_handle, buffer, bytes_to_read, &bytes_read, nullptr))
     {
