@@ -1529,44 +1529,10 @@ void gui_render(drive_info drives[], int drive_count)
     }
     else if (_app_mode == app_mode::read_mode) // c; disc to iso / audio rip
     {
-        if (!read_ctx.is_running && drive_count > 0 && selected_drive_idx < drive_count && drives[selected_drive_idx].disc_present)
-        {
-            static int last_probed_drive = -1;
-            static bool last_probed_media = false;
-            bool cur_media = drives[selected_drive_idx].disc_present;
-            if (last_probed_drive != selected_drive_idx || last_probed_media != cur_media)
-            {
-                last_probed_drive = selected_drive_idx;
-                last_probed_media = cur_media;
-                read_is_audio = false;
-                drive_handle probe_h = drives_open(drives[selected_drive_idx].path);
-                if (probe_h.valid)
-                {
-                    CDROM_TOC probe_toc;
-                    ZeroMemory(&probe_toc, sizeof(probe_toc));
-                    DWORD probe_ret = 0;
-                    if (DeviceIoControl(probe_h.win_handle, IOCTL_CDROM_READ_TOC, nullptr, 0, &probe_toc, sizeof(probe_toc), &probe_ret, nullptr))
-                    {
-                        bool any_data = false;
-                        for (int t = probe_toc.FirstTrack; t <= probe_toc.LastTrack; ++t)
-                        {
-                            int idx = t - probe_toc.FirstTrack;
-                            if (idx >= 0 && idx < MAXIMUM_NUMBER_TRACKS && (probe_toc.TrackData[idx].Control & 0x04))
-                            {
-                                any_data = true;
-                                break;
-                            }
-                        }
-                        read_is_audio = !any_data;
-                    }
-                    drives_close(probe_h);
-                }
-            }
-        }
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 10.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 4));
         ImGui::BeginDisabled(any_engine_running);
-        ImGui::BeginChild("source", ImVec2(0, 85), true);
+        ImGui::BeginChild("source", ImVec2(0, 115), true);
         ImGui::TextDisabled("Source");
         ImGui::Separator();
         ImGui::AlignTextToFramePadding();
@@ -1601,8 +1567,18 @@ void gui_render(drive_info drives[], int drive_count)
         {
             ImGui::TextDisabled("no reader / writer found");
         }
-        if (read_is_audio)
-            ImGui::TextDisabled("Disc type: Audio CD");
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("Mode: ");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(150);
+        if (ImGui::BeginCombo("##rip_mode", read_is_audio ? "Audio tracks (WAV)" : "ISO image"))
+        {
+            if (ImGui::Selectable("ISO image", !read_is_audio))
+                read_is_audio = false;
+            if (ImGui::Selectable("Audio tracks (WAV)", read_is_audio))
+                read_is_audio = true;
+            ImGui::EndCombo();
+        }
         _status_line(read_ctx.is_running);
         ImGui::EndChild();
         ImGui::BeginChild("output", ImVec2(0, 75), true);
