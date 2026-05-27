@@ -134,7 +134,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     log_init(log_path);
     _log_init(hInstance, nullptr);
     LOG_INFO("PABS starting up");
-    LOG_INFO("Current app version: 0.1a");
+    LOG_INFO("Current app version: v0.2a");
     drive_info drives[PABS_MAX_DRIVES];
     int drive_count = drives_enum(drives);
     LOG_INFOF("Found %d optical drive(s)", drive_count);
