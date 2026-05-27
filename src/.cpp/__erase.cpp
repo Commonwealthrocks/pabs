@@ -15,15 +15,14 @@
 #include <chrono>
 static const CLSID clsid_msftdiscformattoerase = {0x2735412B, 0x7F64, 0x5B0F, {0x8F, 0x00, 0x5D, 0x77, 0xAF, 0xBE, 0x26, 0x1E}};
 static const IID iid_discformattoeraseevents = {0x2735413A, 0x7F64, 0x5B0F, {0x8F, 0x00, 0x5D, 0x77, 0xAF, 0xBE, 0x26, 0x1E}};
-class EraseEventSink : public IDispatch
+class erase_event_sink : public IDispatch
 {
 private:
     LONG m_cref;
     erase_context *m_ctx;
-
 public:
-    EraseEventSink(erase_context *ctx) : m_cref(1), m_ctx(ctx) {}
-    virtual ~EraseEventSink() {}
+    erase_event_sink(erase_context *ctx) : m_cref(1), m_ctx(ctx) {}
+    virtual ~erase_event_sink() {}
     STDMETHODIMP QueryInterface(REFIID riid, void **ppv) override
     {
         if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_IDispatch) || IsEqualIID(riid, iid_discformattoeraseevents))
@@ -64,13 +63,6 @@ public:
                 LONG elapsed = 0;
                 if (pDispParams->rgvarg[1].vt == VT_I4)
                     elapsed = pDispParams->rgvarg[1].lVal;
-                IDispatch *pEraser = nullptr;
-                if (pDispParams->rgvarg[2].vt == VT_DISPATCH)
-                    pEraser = pDispParams->rgvarg[2].pdispVal;
-                if (m_ctx->abort_requested && pEraser)
-                {
-                    imapi_set_stat(m_ctx, "Aborting...");
-                }
                 m_ctx->elapsed_seconds = elapsed;
                 m_ctx->estimated_total_seconds = estimatedTotal;
             }
@@ -80,6 +72,7 @@ public:
 };
 static void erase_thread_func(erase_context *ctx)
 {
+    ctx->is_running = true;
     LOG_INFO("Erase starting");
     imapi_set_stat(ctx, "Initializing...");
     if (!ctx->drive)
@@ -90,9 +83,7 @@ static void erase_thread_func(erase_context *ctx)
         return;
     }
     if (ctx->drive->valid)
-    { // c; close raw should be here, now below our coinit
         drives_close(*ctx->drive);
-    }
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     if (FAILED(hr))
     {
@@ -104,7 +95,7 @@ static void erase_thread_func(erase_context *ctx)
     IDispatch *pDiscMaster = nullptr;
     IDispatch *pRecorder = nullptr;
     IDispatch *pEraser = nullptr;
-    EraseEventSink *pEventSink = nullptr;
+    erase_event_sink *pEventSink = nullptr;
     DWORD dwCookie = 0;
     imapi_set_stat(ctx, "Searching for drive...");
     hr = imapi_open_disc_master(&pDiscMaster);
@@ -150,19 +141,15 @@ static void erase_thread_func(erase_context *ctx)
         vFull.boolVal = ctx->options.full_erase ? VARIANT_TRUE : VARIANT_FALSE;
         imapi_dispatch_put(pEraser, L"FullErase", &vFull);
     }
-    pEventSink = new EraseEventSink(ctx);
+    pEventSink = new erase_event_sink(ctx);
     if (!imapi_connpt_advise(pEraser, iid_discformattoeraseevents, pEventSink, &dwCookie))
     {
         LOG_WARN("Failed to setup progress events; progress won't update");
     }
     if (ctx->options.full_erase)
-    {
-        imapi_set_stat(ctx, "Erasing disc (full)...");
-    }
+        imapi_set_stat(ctx, "Erasing disc (full, cannot cancel)...");
     else
-    {
         imapi_set_stat(ctx, "Erasing disc (quick)...");
-    }
     LOG_INFO("Calling EraseMedia");
     hr = imapi_dispatch_call(pEraser, L"EraseMedia", DISPATCH_METHOD, nullptr, nullptr, 0);
     if (SUCCEEDED(hr))
@@ -175,7 +162,7 @@ static void erase_thread_func(erase_context *ctx)
             imapi_dispatch_call(pRecorder, L"EjectMedia", DISPATCH_METHOD, nullptr, nullptr, 0);
             std::this_thread::sleep_for(std::chrono::seconds(1));
             std::wstring wDriveStr = imapi_u8_to_w(ctx->drive->info.path);
-            SHChangeNotify(SHCNE_MEDIAINSERTED, SHCNF_PATHW, wDriveStr.c_str(), NULL);
+            SHChangeNotify(SHCNE_MEDIAREMOVED, SHCNF_PATHW, wDriveStr.c_str(), NULL);
         }
     }
     else if (hr == E_ABORT || ctx->abort_requested || hr == (HRESULT)0xC0AA020A)
@@ -201,10 +188,6 @@ cleanup:
         pDiscMaster->Release();
     CoUninitialize();
     LOG_INFO("IMAPIv2 shutting down");
-    if (ctx->drive && ctx->drive->valid)
-    {
-        drives_close(*ctx->drive);
-    }
     ctx->is_running = false;
 }
 void erase_init(erase_context &ctx, drive_handle *drive, const erase_options &options)
@@ -231,7 +214,6 @@ bool erase_start(erase_context &ctx)
 {
     if (ctx.is_running)
         return false;
-    ctx.is_running = true;
     ctx.abort_requested = false;
     ctx.elapsed_seconds = 0;
     ctx.estimated_total_seconds = 0;
