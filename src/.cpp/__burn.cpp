@@ -502,15 +502,7 @@ bool burn_start(burn_context &ctx)
         ctx.worker_thread->join();
         delete ctx.worker_thread;
     }
-    try
-    {
-        ctx.worker_thread = new std::thread(burn_thread_func, &ctx);
-    }
-    catch (const std::system_error &)
-    {
-        ctx.worker_thread = nullptr;
-        return false;
-    }
+    ctx.worker_thread = new std::thread(burn_thread_func, &ctx);
     return true;
 }
 void burn_abort(burn_context &ctx)

@@ -43,7 +43,7 @@ static bool wav_header_maybe(const std::string &path, uint64_t &out_pcm_size)
         return false;
     }
     uint16_t format, channels, bits_per_s;
-    uint32_t rate, __size_field;
+    uint32_t rate;
     memcpy(&format, header + 20, 2);
     memcpy(&channels, header + 22, 2);
     memcpy(&rate, header + 24, 4);
@@ -653,15 +653,7 @@ bool audio_start(audio_context &ctx)
         ctx.worker_thread->join();
         delete ctx.worker_thread;
     }
-    try
-    {
-        ctx.worker_thread = new std::thread(audio_thread_func, &ctx);
-    }
-    catch (const std::system_error &)
-    {
-        ctx.worker_thread = nullptr;
-        return false;
-    }
+    ctx.worker_thread = new std::thread(audio_thread_func, &ctx);
     return true;
 }
 void audio_abort(audio_context &ctx)
