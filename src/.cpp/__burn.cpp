@@ -80,7 +80,8 @@ public:
                 IDispatch *pFormat2Data = pDispParams->rgvarg[1].pdispVal;
                 if (m_ctx->abort_requested)
                 {
-                    imapi_dispatch_call(pFormat2Data, L"CancelWrite", DISPATCH_METHOD, nullptr, nullptr, 0);
+                    if (pFormat2Data)
+                        imapi_dispatch_call(pFormat2Data, L"CancelWrite", DISPATCH_METHOD, nullptr, nullptr, 0);
                     imapi_set_stat(m_ctx, "Aborting...");
                 }
                 if (pProgress)
@@ -89,10 +90,12 @@ public:
                     VariantInit(&vAction);
                     if (SUCCEEDED(imapi_dispatch_get(pProgress, L"CurrentAction", &vAction)))
                     {
+                        if (vAction.vt != VT_I4)
+                            return S_OK;
                         LONG action = vAction.lVal;
                         VARIANT vElapsed;
                         VariantInit(&vElapsed);
-                        if (SUCCEEDED(imapi_dispatch_get(pProgress, L"ElapsedTime", &vElapsed)))
+                        if (SUCCEEDED(imapi_dispatch_get(pProgress, L"ElapsedTime", &vElapsed)) && vElapsed.vt == VT_I4)
                         {
                             m_ctx->elapsed_seconds = vElapsed.lVal;
                         }
@@ -123,7 +126,7 @@ public:
                                 m_ctx->progress_percent = larp_progress;
                                 m_ctx->write_speed_mbps = 0.0f;
                             }
-                            else if (vTotal.lVal > 0)
+                            else if (vTotal.vt == VT_I4 && vLast.vt == VT_I4 && vStart.vt == VT_I4 && vTotal.lVal > 0)
                             {
                                 written = vLast.lVal - vStart.lVal;
                                 if (written < 0)
@@ -148,7 +151,6 @@ public:
                         {
                             imapi_set_stat(m_ctx, "Formatting...");
                         }
-
                         else if (action == IMAPI_F2_DATA_WRITE_ACTION_VALIDATING_MEDIA)
                         {
                             imapi_set_stat(m_ctx, "Validating...");
@@ -174,7 +176,10 @@ private:
     uint32_t m_svd_sector;
     char m_label_ascii[32];
     char m_label_utf16be[32];
-
+    PatchedIStream(IStream *base, uint32_t pvd, uint32_t svd) : m_cref(1), m_base(base), m_pvd_sector(pvd), m_svd_sector(svd)
+    {
+        m_base->AddRef();
+    }
 public:
     PatchedIStream(IStream *base, const char *label, uint32_t pvd, uint32_t svd) : m_cref(1), m_base(base), m_pvd_sector(pvd), m_svd_sector(svd)
     {
@@ -268,7 +273,7 @@ public:
         HRESULT hr = m_base->Clone(&base_clone);
         if (FAILED(hr))
             return hr;
-        PatchedIStream *wrapper = new PatchedIStream(base_clone, "dummy", m_pvd_sector, m_svd_sector);
+        PatchedIStream *wrapper = new PatchedIStream(base_clone, m_pvd_sector, m_svd_sector);
         memcpy(wrapper->m_label_ascii, m_label_ascii, 32);
         memcpy(wrapper->m_label_utf16be, m_label_utf16be, 32);
         *ppstm = wrapper;
@@ -279,6 +284,7 @@ public:
 
 static void burn_thread_func(burn_context *ctx)
 {
+    ctx->is_running = true;
     LOG_INFO("IMAPIv2 starting");
     imapi_set_stat(ctx, "Initializing...");
     if (!ctx->drive || !ctx->image || !ctx->image->is_valid)
@@ -422,7 +428,7 @@ static void burn_thread_func(burn_context *ctx)
             imapi_dispatch_call(pRecorder, L"EjectMedia", DISPATCH_METHOD, nullptr, nullptr, 0);
             std::this_thread::sleep_for(std::chrono::seconds(1));
             std::wstring wDriveStr = imapi_u8_to_w(ctx->drive->info.path);
-            SHChangeNotify(SHCNE_MEDIAINSERTED, SHCNF_PATHW, wDriveStr.c_str(), NULL);
+            SHChangeNotify(SHCNE_MEDIAREMOVED, SHCNF_PATHW, wDriveStr.c_str(), NULL);
         }
     }
     else if (hr == E_ABORT || ctx->abort_requested || hr == (HRESULT)0xC0AA020A)
@@ -483,7 +489,6 @@ bool burn_start(burn_context &ctx)
 {
     if (ctx.is_running)
         return false;
-    ctx.is_running = true;
     ctx.abort_requested = false;
     ctx.progress_percent = 0.0f;
     ctx.write_speed_mbps = 0.0f;
@@ -497,7 +502,15 @@ bool burn_start(burn_context &ctx)
         ctx.worker_thread->join();
         delete ctx.worker_thread;
     }
-    ctx.worker_thread = new std::thread(burn_thread_func, &ctx);
+    try
+    {
+        ctx.worker_thread = new std::thread(burn_thread_func, &ctx);
+    }
+    catch (const std::system_error &)
+    {
+        ctx.worker_thread = nullptr;
+        return false;
+    }
     return true;
 }
 void burn_abort(burn_context &ctx)
