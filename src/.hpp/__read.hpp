@@ -1,5 +1,5 @@
 // __read.hpp
-// last updated: 27/05/2026
+// last updated: 28/05/2026
 // win32; cmake -G "Ninja" ..
 // win32; ninja
 #pragma once
@@ -12,6 +12,7 @@ struct read_context
 {
     drive_handle *drive;
     std::string output_path;
+    std::atomic<bool> is_audio_disc;
     std::atomic<bool> is_running;
     std::atomic<bool> abort_requested;
     std::atomic<bool> disc_removed; // m; This single line caused me too much trouble.
@@ -22,7 +23,7 @@ struct read_context
     std::thread *worker_thread;
     std::mutex status_mutex;
 };
-void read_init(read_context &ctx, drive_handle *drive, const std::string &output_path);
+void read_init(read_context &ctx, drive_handle *drive, const std::string &output_path, bool is_audio);
 bool read_start(read_context &ctx);
 void read_abort(read_context &ctx);
 

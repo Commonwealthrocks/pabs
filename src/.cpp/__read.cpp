@@ -1,5 +1,5 @@
 // __read.cpp
-// last updated: 27/05/2026
+// last updated: 28/05/2026
 // cmake -G "Ninja" ..
 // ninja
 #include "__read.hpp"
@@ -8,6 +8,26 @@
 #include <winioctl.h>
 #include <ntddcdrm.h>
 #include <chrono>
+#include <vector>
+#pragma pack(push, 1)
+struct wav_header // m; We should account for ripping raw PCM audio,
+                  // >> in that case add a WAV / RIFF header to play it normally.
+{
+    char riff_tag[4] = {'R', 'I', 'F', 'F'};
+    uint32_t riff_len;
+    char wave_tag[4] = {'W', 'A', 'V', 'E'};
+    char fmt_tag[4] = {'f', 'm', 't', ' '};
+    uint32_t fmt_len = 16;
+    uint16_t audio_format = 1;
+    uint16_t num_channels = 2;
+    uint32_t sample_rate = 44100;
+    uint32_t byte_rate = 44100 * 2 * 2;
+    uint16_t block_align = 4;
+    uint16_t bits_per_sample = 16;
+    char data_tag[4] = {'d', 'a', 't', 'a'};
+    uint32_t data_len;
+};
+#pragma pack(pop)
 #define SET_STATUS(ctx, text)                                                 \
     do                                                                        \
     {                                                                         \
@@ -37,6 +57,121 @@ static void read_thread_func(read_context *ctx)
     {
         LOG_ERR("Invalid drive handle");
         SET_STATUS(ctx, "[ ERROR ] Invalid drive");
+        goto cleanup;
+    }
+    if (ctx->is_audio_disc)
+    {
+        SET_STATUS(ctx, "Ripping audio CD...");
+        CDROM_TOC toc;
+        ZeroMemory(&toc, sizeof(toc));
+        DWORD toc_ret = 0;
+        if (!DeviceIoControl(hDrive, IOCTL_CDROM_READ_TOC, nullptr, 0, &toc, sizeof(toc), &toc_ret, nullptr))
+        {
+            LOG_ERR("Failed to read TOC for audio CD ripping");
+            SET_STATUS(ctx, "[ ERROR ] TOC failed");
+            goto cleanup;
+        }
+        int first = toc.FirstTrack;
+        int last = toc.LastTrack;
+        uint64_t total_sectors_to_rip = 0;
+        uint64_t sectors_ripped = 0;
+        struct track_info
+        {
+            int track_num;
+            uint32_t start_lba;
+            uint32_t end_lba;
+        };
+        std::vector<track_info> tracks;
+        for (int t = first; t <= last; ++t)
+        {
+            int idx = t - first;
+            int next_idx = idx + 1;
+            uint32_t lba1 = (toc.TrackData[idx].Address[1] * 60 * 75) + (toc.TrackData[idx].Address[2] * 75) + toc.TrackData[idx].Address[3];
+            uint32_t lba2 = (toc.TrackData[next_idx].Address[1] * 60 * 75) + (toc.TrackData[next_idx].Address[2] * 75) + toc.TrackData[next_idx].Address[3];
+            if (lba1 > 150)
+                lba1 -= 150;
+            else
+                lba1 = 0;
+            if (lba2 > 150)
+                lba2 -= 150;
+            else
+                lba2 = 0;
+
+            tracks.push_back({t, lba1, lba2});
+            total_sectors_to_rip += (lba2 - lba1);
+        }
+        const DWORD SECTOR_SIZE = 2352;
+        const DWORD CHUNK_SECTORS = 16;
+        BYTE *buffer = (BYTE *)VirtualAlloc(nullptr, CHUNK_SECTORS * SECTOR_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        auto start_time = std::chrono::steady_clock::now();
+        auto last_update_time = start_time;
+        uint64_t last_bytes = 0;
+        for (const auto &trk : tracks)
+        {
+            if (ctx->abort_requested)
+                break;
+            char t_status[64];
+            snprintf(t_status, sizeof(t_status), "Ripping Track %02d...", trk.track_num);
+            SET_STATUS(ctx, t_status);
+            char out_path[MAX_PATH];
+            snprintf(out_path, sizeof(out_path), "%s\\Track %02d.wav", ctx->output_path.c_str(), trk.track_num);
+            HANDLE hOutTrack = CreateFileA(out_path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (hOutTrack == INVALID_HANDLE_VALUE)
+                continue;
+            uint32_t track_sectors = trk.end_lba - trk.start_lba;
+            uint32_t track_bytes = track_sectors * SECTOR_SIZE;
+            wav_header wh;
+            wh.data_len = track_bytes;
+            wh.riff_len = 36 + track_bytes;
+            DWORD w;
+            WriteFile(hOutTrack, &wh, sizeof(wh), &w, nullptr);
+            uint32_t current_lba = trk.start_lba;
+            while (current_lba < trk.end_lba && !ctx->abort_requested)
+            {
+                uint32_t s_to_read = CHUNK_SECTORS;
+                if (current_lba + s_to_read > trk.end_lba)
+                    s_to_read = trk.end_lba - current_lba;
+                RAW_READ_INFO rri;
+                rri.DiskOffset.QuadPart = (uint64_t)current_lba * 2048;
+                rri.SectorCount = s_to_read;
+                rri.TrackMode = CDDA;
+                DWORD raw_read_ret = 0;
+                BOOL ok = DeviceIoControl(hDrive, IOCTL_CDROM_RAW_READ, &rri, sizeof(rri), buffer, s_to_read * SECTOR_SIZE, &raw_read_ret, nullptr);
+                if (!ok || raw_read_ret == 0)
+                {
+                    ZeroMemory(buffer, s_to_read * SECTOR_SIZE);
+                    LOG_WARN("Raw read error. Padding with silence.");
+                }
+                WriteFile(hOutTrack, buffer, s_to_read * SECTOR_SIZE, &w, nullptr);
+                current_lba += s_to_read;
+                sectors_ripped += s_to_read;
+                ctx->progress_percent = (float)sectors_ripped / (float)total_sectors_to_rip * 100.0f;
+                auto now = std::chrono::steady_clock::now();
+                auto delta_sec = std::chrono::duration<float>(now - last_update_time).count();
+                if (delta_sec >= 0.5f)
+                {
+                    float speed_bps = ((sectors_ripped * SECTOR_SIZE) - last_bytes) / delta_sec;
+                    ctx->read_speed_mbps = speed_bps / (1024.0f * 1024.0f);
+                    last_update_time = now;
+                    last_bytes = sectors_ripped * SECTOR_SIZE;
+                }
+                ctx->elapsed_seconds = (uint32_t)std::chrono::duration_cast<std::chrono::seconds>(now - start_time).count();
+            }
+            CloseHandle(hOutTrack);
+        }
+        VirtualFree(buffer, 0, MEM_RELEASE);
+        if (ctx->abort_requested)
+        {
+            LOG_WARN("Audio Rip aborted by user.");
+            SET_STATUS(ctx, "Aborted");
+        }
+        else
+        {
+            LOG_OK("Audio Rip finished successfully.");
+            SET_STATUS(ctx, "Finished");
+            ctx->progress_percent = 100.0f;
+            ctx->read_speed_mbps = 0.0f;
+        }
         goto cleanup;
     }
     {
@@ -220,7 +355,7 @@ cleanup:
     LOG_INFO("Read engine shutting down");
     ctx->is_running = false;
 }
-void read_init(read_context &ctx, drive_handle *drive, const std::string &output_path)
+void read_init(read_context &ctx, drive_handle *drive, const std::string &output_path, bool is_audio)
 {
     if (ctx.worker_thread)
     {
@@ -231,6 +366,7 @@ void read_init(read_context &ctx, drive_handle *drive, const std::string &output
     }
     ctx.drive = drive;
     ctx.output_path = output_path;
+    ctx.is_audio_disc = is_audio;
     ctx.is_running = false;
     ctx.abort_requested = false;
     ctx.disc_removed = false;
