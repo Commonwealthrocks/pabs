@@ -1975,7 +1975,7 @@ void gui_render(drive_info drives[], int drive_count)
                 if (filename[strlen(filename) + 1] == '\0')
                 {
                     char dir_buf[MAX_PATH] = {0};
-                    strncpy(dir_buf, filename, sizeof(dir_buf) - 1);
+                    snprintf(dir_buf, sizeof(dir_buf), "%s", filename);
                     if (PathRemoveFileSpecA(dir_buf))
                         _config.last_browse_dir = dir_buf;
                     cur_list.add_path(filename);
@@ -2370,7 +2370,7 @@ void gui_render(drive_info drives[], int drive_count)
                 if (filename[strlen(filename) + 1] == '\0')
                 {
                     char dir_buf[MAX_PATH] = {0};
-                    strncpy(dir_buf, filename, sizeof(dir_buf) - 1);
+                    snprintf(dir_buf, sizeof(dir_buf), "%s", filename);
                     if (PathRemoveFileSpecA(dir_buf))
                         _config.last_browse_dir = dir_buf;
                     audio_tracks.add_path(filename);
@@ -2378,7 +2378,7 @@ void gui_render(drive_info drives[], int drive_count)
                 else
                 {
                     char dir_buf[MAX_PATH] = {0};
-                    strncpy(dir_buf, filename, sizeof(dir_buf) - 1);
+                    snprintf(dir_buf, sizeof(dir_buf), "%s", filename);
                     if (PathRemoveFileSpecA(dir_buf))
                         _config.last_browse_dir = dir_buf;
                     char *dir = filename;
@@ -2843,7 +2843,7 @@ void gui_render(drive_info drives[], int drive_count)
             if (GetOpenFileNameA(&ofn))
             {
                 char dir_buf[MAX_PATH] = {0};
-                strncpy(dir_buf, iso_path, sizeof(dir_buf) - 1);
+                snprintf(dir_buf, sizeof(dir_buf), "%s", iso_path);
                 if (PathRemoveFileSpecA(dir_buf))
                     _config.last_browse_dir = dir_buf;
             }
