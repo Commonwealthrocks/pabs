@@ -39,7 +39,11 @@ static drive_type guess_drive(const char *product)
     for (int i = 0; product[i] && i < 16; ++i)
         lower[i] = (char)tolower((unsigned char)product[i]);
     if (strstr(lower, "bd") || strstr(lower, "blu"))
+    {
+        if (strstr(lower, "rom"))
+            return drive_type::bdrom;
         return drive_type::bdrw;
+    }
     if (strstr(lower, "dvd") && strstr(lower, "rw"))
         return drive_type::dvdrw;
     if (strstr(lower, "dvd") && strstr(lower, "r"))
@@ -67,17 +71,7 @@ int drives_enum(drive_info out_drives[PABS_MAX_DRIVES])
             drives_close(h);
             continue;
         }
-        if (!drives_inquiry(h))
-        {
-            out_drives[found] = drive_info{};
-            out_drives[found].path[0] = letter;
-            out_drives[found].path[1] = ':';
-            out_drives[found].type = drive_type::unknown;
-        }
-        else
-        {
-            out_drives[found] = h.info;
-        }
+        out_drives[found] = h.info;
         out_drives[found].disc_present = drives_test_ready(h);
         switch (out_drives[found].type)
         {
@@ -103,7 +97,7 @@ drive_handle drives_open(const char *drive_path)
 {
     drive_handle handle = {};
     handle.valid = false;
-    char full_path[16] = {};
+    char full_path[32] = {};
     snprintf(full_path, sizeof(full_path), "\\\\.\\%s", drive_path);
     handle.win_handle = CreateFileA(full_path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (handle.win_handle == INVALID_HANDLE_VALUE)
@@ -143,7 +137,7 @@ bool drives_test_ready(drive_handle &handle)
 }
 bool drives_has_media(const char *drive_path)
 {
-    char full_path[16] = {};
+    char full_path[32] = {};
     snprintf(full_path, sizeof(full_path), "\\\\.\\%s", drive_path);
     HANDLE h = CreateFileA(full_path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE)
