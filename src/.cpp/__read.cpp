@@ -1,5 +1,5 @@
 // __read.cpp
-// last updated: 23/05/2026
+// last updated: 27/05/2026
 // cmake -G "Ninja" ..
 // ninja
 #include "__read.hpp"
@@ -16,6 +16,7 @@
     } while (0)
 static void read_thread_func(read_context *ctx)
 {
+    ctx->is_running = true;
     LOG_INFO("Read engine starting");
     SET_STATUS(ctx, "Initializing...");
     HANDLE hDrive = INVALID_HANDLE_VALUE;
@@ -246,7 +247,6 @@ bool read_start(read_context &ctx)
 {
     if (ctx.is_running)
         return false;
-    ctx.is_running = true;
     ctx.abort_requested = false;
     ctx.disc_removed = false;
     ctx.progress_percent = 0.0f;
