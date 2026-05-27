@@ -1,10 +1,10 @@
 ## CMakeLists.txt
-## last updated: 16/05/2026
+## last updated: 26/05/2026
 ## cmake -G "Ninja" ..                               > (dynamic, df)
 ## [or] cmake -G "Ninja" -DPABS_STATIC_BUILD=ON ..   > (static build)
 ## ninja
 cmake_minimum_required(VERSION 3.20)
-project(pabs VERSION 0.1 LANGUAGES CXX RC)
+project(pabs VERSION 0.2 LANGUAGES CXX RC)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(NOT CMAKE_BUILD_TYPE)
