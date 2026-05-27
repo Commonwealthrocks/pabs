@@ -1,5 +1,5 @@
 // __build.cpp
-// last updated: 23/05/2026
+// last updated: 27/05/2026
 // win32; cmake -G "Ninja" ..
 // win32; ninja
 #include "__build.hpp"
@@ -268,62 +268,68 @@ public:
                 VariantInit(&vAction);
                 if (SUCCEEDED(imapi_dispatch_get(pProgress, L"CurrentAction", &vAction)))
                 {
-                    LONG action = vAction.lVal;
-                    VARIANT vElapsed;
-                    VariantInit(&vElapsed);
-                    if (SUCCEEDED(imapi_dispatch_get(pProgress, L"ElapsedTime", &vElapsed)))
-                        m_ctx->elapsed_seconds = vElapsed.lVal;
-                    if (action == IMAPI_F2_DATA_WRITE_ACTION_WRITING_DATA || action == IMAPI_F2_DATA_WRITE_ACTION_FINALIZATION)
+                    if (vAction.vt == VT_I4)
                     {
-                        if (action == IMAPI_F2_DATA_WRITE_ACTION_WRITING_DATA)
-                            imapi_set_stat(m_ctx, "Burning...");
-                        else
-                            imapi_set_stat(m_ctx, "Finalizing...");
-                        VARIANT vTotal, vLast, vStart;
-                        VariantInit(&vTotal);
-                        VariantInit(&vLast);
-                        VariantInit(&vStart);
-                        imapi_dispatch_get(pProgress, L"SectorCount", &vTotal);
-                        imapi_dispatch_get(pProgress, L"LastWrittenLba", &vLast);
-                        imapi_dispatch_get(pProgress, L"StartLba", &vStart);
-                        if (action == IMAPI_F2_DATA_WRITE_ACTION_FINALIZATION)
+                        LONG action = vAction.lVal;
+                        VARIANT vElapsed;
+                        VariantInit(&vElapsed);
+                        if (SUCCEEDED(imapi_dispatch_get(pProgress, L"ElapsedTime", &vElapsed)) && vElapsed.vt == VT_I4)
+                            m_ctx->elapsed_seconds = vElapsed.lVal;
+                        if (action == IMAPI_F2_DATA_WRITE_ACTION_WRITING_DATA || action == IMAPI_F2_DATA_WRITE_ACTION_FINALIZATION)
                         {
-                            if (!m_is_finalizing)
+                            if (action == IMAPI_F2_DATA_WRITE_ACTION_WRITING_DATA)
+                                imapi_set_stat(m_ctx, "Burning...");
+                            else
+                                imapi_set_stat(m_ctx, "Finalizing...");
+                            VARIANT vTotal, vLast, vStart;
+                            VariantInit(&vTotal);
+                            VariantInit(&vLast);
+                            VariantInit(&vStart);
+                            imapi_dispatch_get(pProgress, L"SectorCount", &vTotal);
+                            imapi_dispatch_get(pProgress, L"LastWrittenLba", &vLast);
+                            imapi_dispatch_get(pProgress, L"StartLba", &vStart);
+                            if (action == IMAPI_F2_DATA_WRITE_ACTION_FINALIZATION)
                             {
-                                m_is_finalizing = true;
-                                m_finalizing_start = m_ctx->elapsed_seconds;
+                                if (!m_is_finalizing)
+                                {
+                                    m_is_finalizing = true;
+                                    m_finalizing_start = m_ctx->elapsed_seconds;
+                                }
+                                float larp_progress = (float)(m_ctx->elapsed_seconds - m_finalizing_start) / 15.0f * 100.0f;
+                                if (larp_progress > 99.0f) // c; we don't know how long this part would take, so we gonna larp it
+                                    larp_progress = 99.0f;
+                                m_ctx->progress_percent = larp_progress;
+                                m_ctx->write_speed_mbps = 0.0f;
                             }
-                            float larp_progress = (float)(m_ctx->elapsed_seconds - m_finalizing_start) / 15.0f * 100.0f;
-                            if (larp_progress > 99.0f) // c; we don't know how long this part would take, so we gonna larp it
-                                larp_progress = 99.0f;
-                            m_ctx->progress_percent = larp_progress;
-                            m_ctx->write_speed_mbps = 0.0f;
-                        }
-                        else if (vTotal.lVal > 0)
-                        {
-                            LONG written = vLast.lVal - vStart.lVal;
-                            if (written < 0)
-                                written = 0;
-                            m_ctx->progress_percent = (float)written / (float)vTotal.lVal * 100.0f;
-                            uint64_t cur = (uint64_t)written * 2048;
-                            auto now = std::chrono::steady_clock::now();
-                            auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_last_time).count();
-                            if (dt >= 1000)
+                            else if (vTotal.vt == VT_I4 && vTotal.lVal > 0)
                             {
-                                if (cur >= m_last_bytes)
-                                    m_ctx->write_speed_mbps = (float)(cur - m_last_bytes) / 1024.0f / 1024.0f / (dt / 1000.0f);
-                                m_last_bytes = cur;
-                                m_last_time = now;
+                                LONG total = vTotal.lVal;
+                                LONG last = (vLast.vt == VT_I4) ? vLast.lVal : 0;
+                                LONG start = (vStart.vt == VT_I4) ? vStart.lVal : 0;
+                                LONG written = last - start;
+                                if (written < 0)
+                                    written = 0;
+                                m_ctx->progress_percent = (float)written / (float)total * 100.0f;
+                                uint64_t cur = (uint64_t)written * 2048;
+                                auto now = std::chrono::steady_clock::now();
+                                auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_last_time).count();
+                                if (dt >= 1000)
+                                {
+                                    if (cur >= m_last_bytes)
+                                        m_ctx->write_speed_mbps = (float)(cur - m_last_bytes) / 1024.0f / 1024.0f / (dt / 1000.0f);
+                                    m_last_bytes = cur;
+                                    m_last_time = now;
+                                }
                             }
                         }
-                    }
-                    else if (action == IMAPI_F2_DATA_WRITE_ACTION_FORMATTING_MEDIA)
-                        imapi_set_stat(m_ctx, "Formatting...");
+                        else if (action == IMAPI_F2_DATA_WRITE_ACTION_FORMATTING_MEDIA)
+                            imapi_set_stat(m_ctx, "Formatting...");
 
-                    else if (action == IMAPI_F2_DATA_WRITE_ACTION_VALIDATING_MEDIA)
-                        imapi_set_stat(m_ctx, "Validating...");
-                    else if (action == IMAPI_F2_DATA_WRITE_ACTION_CALIBRATING_POWER)
-                        imapi_set_stat(m_ctx, "Calibrating laser..."); // c; same bullshi from __burn.cpp in theory so i can js copy n' paste 95% of it
+                        else if (action == IMAPI_F2_DATA_WRITE_ACTION_VALIDATING_MEDIA)
+                            imapi_set_stat(m_ctx, "Validating...");
+                        else if (action == IMAPI_F2_DATA_WRITE_ACTION_CALIBRATING_POWER)
+                            imapi_set_stat(m_ctx, "Calibrating laser..."); // c; same bullshi from __burn.cpp in theory so i can js copy n' paste 95% of it
+                    }
                 }
             }
         }
@@ -332,6 +338,7 @@ public:
 };
 static void build_thread_func(build_context *ctx)
 {
+    ctx->is_running = true;
     LOG_INFO("Build engine starting");
     imapi_set_stat(ctx, "Initializing...");
     if (!ctx->file_list || ctx->file_list->entries.empty())
@@ -794,6 +801,9 @@ static void build_thread_func(build_context *ctx)
         {
             LOG_INFO("Ejecting disc");
             imapi_dispatch_call(pRecorder, L"EjectMedia", DISPATCH_METHOD, nullptr, nullptr, 0);
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            std::wstring wDriveStr = imapi_u8_to_w(ctx->drive->info.path);
+            SHChangeNotify(SHCNE_MEDIAREMOVED, SHCNF_PATHW, wDriveStr.c_str(), NULL);
         }
     }
     else if (hr == E_ABORT || ctx->abort_requested || hr == (HRESULT)0xC0AA020A)
@@ -889,7 +899,6 @@ bool build_start(build_context &ctx)
 {
     if (ctx.is_running)
         return false;
-    ctx.is_running = true;
     ctx.abort_requested = false;
     ctx.progress_percent = 0.0f;
     ctx.write_speed_mbps = 0.0f;
