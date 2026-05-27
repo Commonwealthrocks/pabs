@@ -111,7 +111,7 @@ static void read_thread_func(read_context *ctx)
             if (ctx->abort_requested)
                 break;
             char t_status[64];
-            snprintf(t_status, sizeof(t_status), "Ripping Track %02d...", trk.track_num);
+            snprintf(t_status, sizeof(t_status), "Ripping track %02d...", trk.track_num);
             SET_STATUS(ctx, t_status);
             char out_path[MAX_PATH];
             snprintf(out_path, sizeof(out_path), "%s\\Track %02d.wav", ctx->output_path.c_str(), trk.track_num);
