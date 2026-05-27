@@ -7,7 +7,7 @@ Burning software made in **C++** with `IMAPIv2`, `ImGui` *(**DX11** based)*, no 
 Now on first glance, you might say *"Hey! This just looks like **ImgBurn**!"*, and I mean... yeah; it basically is just **ImgBurn** inspired, well at least the GUI. But if you click on any of the modes or any other tab, you'd see that they are *way* different.
 
 ## **Warning**
-PABS is still very early into development *(`v0.1a`)*. Some features may not work well, some may be missing *(e.g. video `DVDs`, boot `ISOs`)*, and some may be buggy; it will get better over time. Hopefully.
+PABS is still very early into development *(`v0.2a`)*. Some features may not work well, some may be missing *(e.g. video `DVDs`, boot `ISOs`)*, and some may be buggy; it will get better over time. Hopefully.
 
 ## **Features**
 - Burn `ISOs` to disc.
@@ -44,7 +44,7 @@ git clone https://github.com/Commonwealthrocks/pabs.git && cd pabs
 ```
 
 ### **Compiling**
-Once your **UCRT64** environment is set up, navigate to the root of the **PABS** source code repository in your terminal and execute the following commands...
+Once your **UCRT64** environment is set up, navigate to the root of the **PABS** source code *(`\src`)* repository in your terminal and execute the following commands...
 ```bash
 mkdir build && cd build
 ```
@@ -58,6 +58,11 @@ And to actually start... well, compiling; you only need to run one last command!
 ninja
 ```
 And wait for it to compile, shouldn't take super long. And optionally you can run `strip ../pabs.exe` to strip out the `G++` debug symbols; reducing the size from around 5MBs to around 2MBs.
+
+### **All commands at once.**
+```bash
+mkdir build && cd build && cmake -G "Ninja" -DPABS_STATIC_BUILD=ON .. && ninja && strip ../pabs.exe
+```
 
 ## **License**
 **PABS** is provided under the **MIT** license for any and all usage! View the license [here](license.txt).
