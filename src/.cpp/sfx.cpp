@@ -7,6 +7,12 @@
 #include <windows.h>
 #include <mmsystem.h>
 #include <string>
+static std::string get_win(const char *filename)
+{
+    char win_dir[MAX_PATH] = {0};
+    GetWindowsDirectoryA(win_dir, MAX_PATH);
+    return std::string(win_dir) + "\\Media\\" + filename;
+}
 namespace sfx
 {
     static std::string get_sfx_path(const char *filename)
@@ -21,7 +27,7 @@ namespace sfx
     void error_sfx()
     {
         if (!_config.mute_error_sfx)
-            PlaySoundA("C:\\Windows\\Media\\Windows Critical Stop.wav", NULL, SND_FILENAME | SND_ASYNC | SND_NODEFAULT);
+            PlaySoundA(get_win("Windows Critical Stop.wav").c_str(), NULL, SND_FILENAME | SND_ASYNC | SND_NODEFAULT);
     }
     void success_sfx()
     {
@@ -31,7 +37,7 @@ namespace sfx
     void info_sfx()
     {
         if (!_config.mute_info_sfx)
-            PlaySoundA("C:\\Windows\\Media\\Speech On.wav", NULL, SND_FILENAME | SND_ASYNC | SND_NODEFAULT);
+            PlaySoundA(get_win("Speech On.wav").c_str(), NULL, SND_FILENAME | SND_ASYNC | SND_NODEFAULT);
     }
 }
 
