@@ -1,5 +1,5 @@
 // config.hpp
-// last updated: 23/05/2026
+// last updated: 04/06/2026
 // win32; cmake -G "Ninja" ..
 // win32; ninja
 #pragma once
@@ -17,7 +17,7 @@ struct pabs_config
     int sfx_volume;
     bool mute_success_sfx;
     bool mute_error_sfx;
-    bool mute_warning_sfx;
+    bool mute_info_sfx;
     int iso_mode;
     bool where_audio_go;
     std::string ffmpeg_override;
