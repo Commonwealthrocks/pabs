@@ -1,5 +1,5 @@
 ; installer.iss
-; last updated: 23/05/2026
+; last updated: 04/06/2026
 ; mk
 
 [Setup]
@@ -37,11 +37,11 @@ Name: "startmenuicon"; Description: "Create a &Start Menu shortcut"; GroupDescri
 [Code]
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
-  if CurUninstallStep = usPostUninstall then
+  if CurUninstallStep = usUninstall then
   begin
     if MsgBox('Do you want to completely remove your PABS settings (appdata)?', mbConfirmation, MB_YESNO) = IDYES then
     begin
-      DelTree(ExpandConstant('{%appdata%}\PABS'), True, True, True);
+      DelTree(ExpandConstant('{userappdata}\PABS'), True, True, True);
     end;
   end;
 end;
