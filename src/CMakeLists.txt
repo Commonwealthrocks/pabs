@@ -1,5 +1,5 @@
 ## CMakeLists.txt
-## last updated: 26/05/2026
+## last updated: 04/06/2026
 ## cmake -G "Ninja" ..                               > (dynamic, df)
 ## [or] cmake -G "Ninja" -DPABS_STATIC_BUILD=ON ..   > (static build)
 ## ninja
@@ -43,6 +43,7 @@ set(PABS_SOURCES
     .cpp/ui.cpp
     .cpp/log_window.cpp
     .cpp/outs.cpp
+    .cpp/sfx.cpp
     assets/__cache/no/ic_h.rc
 )
 add_executable(pabs WIN32 ${PABS_SOURCES} ${IMGUI_SOURCES})
