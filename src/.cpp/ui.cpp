@@ -1,5 +1,5 @@
 // ui.cpp
-// last updated: 28/05/2026
+// last updated: 04/06/2026
 // win32; cmake -G "Ninja" ..
 // win32; ninja
 #include "ui.hpp"
@@ -570,7 +570,6 @@ static ID3D11ShaderResourceView *tex_create = nullptr;
 static char verify_compare_path[4096] = "";
 ID3D11ShaderResourceView *tex_about = nullptr;
 static ID3D11ShaderResourceView *tex_boardkey = nullptr;
-static ID3D11ShaderResourceView *tex_quick_info = nullptr;
 static ID3D11ShaderResourceView *tex_audio_disc = nullptr;
 static int session_write_speed = 0;
 static int session_read_speed = 0;
@@ -669,10 +668,9 @@ bool ui_init(ID3D11Device *device)
     tex_abort = load_svg("imgs/abort.svg", 64, 64); // c; holy FUCK i fixed it and don't ask me how cause i don't know
     tex_s_sector = load_svg("imgs/s_sector.svg", 24, 24);
     tex_create = load_svg("imgs/create.svg", 24, 24);
-    tex_about = load_svg("imgs/about.svg", 24, 24);
+    tex_about = load_svg("imgs/about.svg", 24, 24); // m; Removed the unecessary one, we can just re-use this one.
     tex_boardkey = load_svg("imgs/boardkey.svg", 24, 24);
-    tex_quick_info = load_svg("imgs/quick_info.svg", 24, 24); // c; will fix later
-    tex_audio_disc = load_svg("imgs/audio_disc.svg", 32, 32); // c; this too
+    tex_audio_disc = load_svg("imgs/audio_disc.svg", 32, 32); // c; still looks meh
     strncpy(volume_label_buf, _config.volume_label.c_str(), sizeof(volume_label_buf) - 1);
     reset_from_config();
     snprintf(build_ctx.status_text, sizeof(build_ctx.status_text), "Idle");
@@ -782,8 +780,6 @@ void gui_shutdown()
         tex_about->Release();
     if (tex_boardkey)
         tex_boardkey->Release();
-    if (tex_quick_info)
-        tex_quick_info->Release();
     if (tex_audio_disc)
         tex_audio_disc->Release();
     LOG_OK("GUI shutting down");
@@ -1338,15 +1334,15 @@ void gui_render(drive_info drives[], int drive_count)
             if (ImGui::MenuItem("      About PABS"))
                 _trigger_about();
             p = ImGui::GetCursorScreenPos();
+            if (tex_about)
+                ImGui::GetWindowDrawList()->AddImage((ImTextureID)tex_about, ImVec2(p.x + 4, p.y + 1), ImVec2(p.x + 18, p.y + 15));
+            if (ImGui::MenuItem("      Quick features"))
+                _trigger_quick_features();
+            p = ImGui::GetCursorScreenPos();
             if (tex_boardkey)
                 ImGui::GetWindowDrawList()->AddImage((ImTextureID)tex_boardkey, ImVec2(p.x + 4, p.y + 1), ImVec2(p.x + 18, p.y + 15));
             if (ImGui::MenuItem("      Keybinds"))
                 _trigger_keybinds();
-            p = ImGui::GetCursorScreenPos();
-            if (tex_quick_info)
-                ImGui::GetWindowDrawList()->AddImage((ImTextureID)tex_quick_info, ImVec2(p.x + 4, p.y + 1), ImVec2(p.x + 18, p.y + 15));
-            if (ImGui::MenuItem("      Quick features"))
-                _trigger_quick_features();
             ImGui::EndPopup();
         }
         ImGui::EndMainMenuBar();
@@ -1449,7 +1445,7 @@ void gui_render(drive_info drives[], int drive_count)
         if (!found)
         {
             drive_missing = true;
-            if (!_config.mute_warning_sfx)
+            if (!_config.mute_info_sfx)
             {
                 PlaySoundA("SystemExclamation", NULL, SND_ALIAS | SND_ASYNC | SND_NODEFAULT);
             }
@@ -2804,7 +2800,7 @@ void gui_render(drive_info drives[], int drive_count)
         }
         settings_dirty |= ImGui::Checkbox("Mute success sound", &temp_config.mute_success_sfx);
         settings_dirty |= ImGui::Checkbox("Mute error sound", &temp_config.mute_error_sfx);
-        settings_dirty |= ImGui::Checkbox("Mute warning sound", &temp_config.mute_warning_sfx);
+        settings_dirty |= ImGui::Checkbox("Mute info sound", &temp_config.mute_info_sfx);
         ImGui::Spacing();
         ImGui::TextDisabled("Defaults");
         ImGui::Separator();
