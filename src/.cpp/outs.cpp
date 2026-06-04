@@ -4,6 +4,7 @@
 // win32; ninja
 // m; You really need a better naming convention, outs?
 #include "outs.hpp"
+#include "sfx.hpp"
 #include "imgui.h"
 #include <string>
 #include <windows.h>
@@ -110,7 +111,10 @@ void _tt_icon(const char *key, const char *popup_id)
         ImGui::GetWindowDrawList()->AddImage((ImTextureID)tex_about, ImVec2(p.x, p.y + 2), ImVec2(p.x + 16, p.y + 18), ImVec2(0, 0), ImVec2(1, 1), col);
     }
     if (clicked)
+    {
+        sfx::info_sfx();
         ImGui::OpenPopup(popup_id);
+    }
     ImGuiViewport *mv = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(ImVec2(mv->WorkPos.x + mv->WorkSize.x * 0.5f, mv->WorkPos.y + mv->WorkSize.y * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     if (ImGui::BeginPopupModal(popup_id, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
@@ -155,13 +159,10 @@ void cd_ok(const char *title, const char *message)
     ok_title = title;
     ok_msg = message;
     show_ok = true;
-    if (!_config.mute_success_sfx)
-    {
-        PlaySoundA("assets\\sfx\\success.wav", NULL, SND_FILENAME | SND_ASYNC | SND_NODEFAULT); // m; Why do you use two backslahes?
-                                                                                                // c; cause... the language works like that?
-                                                                                                // m; Next.JS fixes that btw!
-                                                                                                // c; SHUT THE FUCK UP
-    }
+    sfx::info_sfx(); // m; Why do you use two backslahes?
+                     // c; cause... the language works like that?
+                     // m; Next.JS fixes that btw!
+                     // c; SHUT THE FUCK UP
 }
 void cd_error(const char *title, const char *message)
 {
@@ -170,15 +171,17 @@ void cd_error(const char *title, const char *message)
     show_ok = true;
     if (!_config.mute_error_sfx)
     {
-        PlaySoundA("SystemHand", NULL, SND_ALIAS | SND_ASYNC | SND_NODEFAULT);
+        sfx::error_sfx();
     }
 }
 void cd_clean_disc()
 {
+    sfx::info_sfx();
     show_clean = true;
 }
 void __cd_abort(bool is_burn_op)
 {
+    sfx::info_sfx();
     show_abort = true;
     show_abort_burn = is_burn_op;
 }
@@ -273,12 +276,14 @@ abort_action cd_abort()
 }
 void _trigger_mk_cue()
 {
+    sfx::info_sfx();
     cue_dialog = true;
     cue_tracks.clear();
     cue_error.clear();
 }
 void _trigger_mk_dvd()
 {
+    sfx::info_sfx();
     dvd_dialog = true;
     dvd_iso_path[0] = '\0';
     dvd_error.clear();
@@ -681,6 +686,7 @@ void cd_creators() // m; In reality Common doesn't use these functions one bit,
 static bool show_about = false;
 void _trigger_about()
 {
+    sfx::info_sfx();
     show_about = true;
 }
 void cd_about()
@@ -717,6 +723,7 @@ void cd_about()
 static bool show_keybinds = false;
 void _trigger_keybinds()
 {
+    sfx::info_sfx();
     show_keybinds = true;
 }
 void cd_keybinds()
@@ -781,6 +788,7 @@ void cd_keybinds()
 static bool show_quick_features = false;
 void _trigger_quick_features()
 {
+    sfx::info_sfx();
     show_quick_features = true;
 }
 void cd_quick_features()
