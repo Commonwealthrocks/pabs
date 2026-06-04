@@ -25,7 +25,7 @@ PABS is still very early into development *(`v0.2a`)*. Some features may not wor
 - Configurable settings.
 
 ## **Requirements**
-- **Windows 7** or later *(prefer **Windows 10**)*.
+- **Windows 8 / 8.1** or later *(prefer **Windows 10**)*.
 - A compatible `CD` / `DVD` reader / writer.
 
 ## **Building**
