@@ -146,6 +146,9 @@ struct disc_info
     uint8_t atip_leadout_f = 0;
     bool nwa_known = false;
     uint32_t next_writable_lba = 0;
+    bool cdtext_known = false;
+    char cdtext_album[128] = {};
+    char cdtext_performer[128] = {};
 };
 static const char *disc_profile_str(uint16_t profile)
 { // c; what the fuck is a DVD-RAM?
@@ -306,6 +309,61 @@ static bool next_rw_address(HANDLE h, uint32_t &out_lba)
     out_lba = ((uint32_t)buf[4] << 24) | ((uint32_t)buf[5] << 16) | ((uint32_t)buf[6] << 8) | (uint32_t)buf[7];
     return true;
 }
+static bool probe_cdtext(HANDLE h, char *out_album, size_t album_sz, char *out_performer, size_t perf_sz)
+{
+    BYTE buf[8192] = {};
+    sptd_packet pkt;
+    sptd_init(pkt, buf, sizeof(buf), SCSI_IOCTL_DATA_IN);
+    pkt.sptd.CdbLength = 10;
+    pkt.sptd.Cdb[0] = 0x43;
+    pkt.sptd.Cdb[1] = 0x00;
+    pkt.sptd.Cdb[2] = 0x05;
+    pkt.sptd.Cdb[7] = (BYTE)(sizeof(buf) >> 8);
+    pkt.sptd.Cdb[8] = (BYTE)(sizeof(buf) & 0xFF);
+    if (!sptd_send(h, pkt))
+        return false;
+    uint16_t data_len = ((uint16_t)buf[0] << 8) | (uint16_t)buf[1];
+    if (data_len < 4)
+        return false;
+    uint16_t payload_len = data_len - 2;
+    if (payload_len < 18)
+        return false;
+    int pack_count = payload_len / 18;
+    BYTE *packs = buf + 4;
+    std::string album_buf;
+    std::string perf_buf;
+    for (int i = 0; i < pack_count; ++i)
+    {
+        BYTE *pack = packs + (i * 18);
+        BYTE pack_type = pack[0];
+        BYTE track_num = pack[1];
+        if (pack_type == 0x80 && track_num == 0)
+        {
+            for (int j = 4; j < 16; ++j)
+            {
+                if (pack[j] == 0x00)
+                    break;
+                album_buf += (char)pack[j];
+            }
+        }
+        else if (pack_type == 0x81 && track_num == 0)
+        {
+            for (int j = 4; j < 16; ++j)
+            {
+                if (pack[j] == 0x00)
+                    break;
+                perf_buf += (char)pack[j];
+            }
+        }
+    }
+    if (album_buf.empty() && perf_buf.empty())
+        return false;
+    if (!album_buf.empty())
+        snprintf(out_album, album_sz, "%s", album_buf.c_str());
+    if (!perf_buf.empty())
+        snprintf(out_performer, perf_sz, "%s", perf_buf.c_str());
+    return true;
+}
 static disc_info probe_disc(drive_handle &h)
 {
     disc_info info = {};
@@ -395,6 +453,10 @@ static disc_info probe_disc(drive_handle &h)
     {
         info.nwa_known = true;
         info.next_writable_lba = nwa;
+    }
+    if (probe_cdtext(h.win_handle, info.cdtext_album, sizeof(info.cdtext_album), info.cdtext_performer, sizeof(info.cdtext_performer)))
+    {
+        info.cdtext_known = true;
     }
     return info;
 }
@@ -3198,16 +3260,16 @@ void gui_render(drive_info drives[], int drive_count)
                         }
                         else
                         {
-                            append_field("Free sectors:", "unavailable");
-                            append_field("Free space:", "unavailable");
-                            append_field("Free time:", "unavailable");
+                            append_field("Free sectors:", "unavailable (normal on blanks)");
+                            append_field("Free space:", "unavailable (normal on blanks)");
+                            append_field("Free time:", "unavailable (normal on blanks)");
                         }
                         if (result.nwa_known)
                             append_field_u32("Next writable address:", result.next_writable_lba);
                         else if (result.disc_info_we_kinda_know && (result.disc_status & 0x03) == 0)
                             append_field("Next writable address:", "0");
                         else
-                            append_field("Next writable address:", "unavailable");
+                            append_field("Next writable address:", "unavailable (normal on blanks)");
                         if (result.atip_known)
                         {
                             append("%-21s %02um%02us%02uf\r\n", "ATIP lead in:", result.atip_leadin_m, result.atip_leadin_s, result.atip_leadin_f);
@@ -3215,8 +3277,8 @@ void gui_render(drive_info drives[], int drive_count)
                         }
                         else
                         {
-                            append_field("ATIP lead in:", "unavailable");
-                            append_field("ATIP lead out:", "unavailable");
+                            append_field("ATIP lead in:", "unavailable (normal on blanks)");
+                            append_field("ATIP lead out:", "unavailable (normal on blanks)");
                         }
                         if (!snap.supported_write_speeds.empty())
                         {
@@ -3240,8 +3302,17 @@ void gui_render(drive_info drives[], int drive_count)
                         }
                         else
                         {
-                            append_field("Volume label:", "unavailable");
-                            append_field("Filesystem:", "unavailable");
+                            append_field("Volume label:", "unavailable (normal on blanks)");
+                            append_field("Filesystem:", "unavailable (normal on blanks)");
+                        }
+                        if (result.cdtext_known)
+                        {
+                            append("----------------------------------------\r\n");
+                            append_field("CD-TEXT:", "found");
+                            if (result.cdtext_album[0])
+                                append_field("  Album:", result.cdtext_album);
+                            if (result.cdtext_performer[0])
+                                append_field("  Performer:", result.cdtext_performer);
                         }
                         bool blank_disc = (result.disc_info_we_kinda_know && (result.disc_status & 0x03) == 0);
                         bool partial_read = !result.first_read_ok;
