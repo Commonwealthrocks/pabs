@@ -1,0 +1,19 @@
+## changelogs.txt
+## last updated: 04/06/2026
+## scroll all the way down for latest logs from now on
+
+VERSION 0.1a - 28/05/2026
+       VERSION WAS
+      NOT DOCUMENTED!
+	  
+VERSION 0.2a - 23/05/2026
+       VERSION WAS
+      NOT DOCUMENTED!
+	  
+VERSION 0.3a - 04/06/2026
+- Added sfx.cpp with sound effect handlers for error, info and.
+  success sounds in PABS
+- Sound effects now play on each dialog depending on their display
+  or content.
+- Re-ordered the buttons in the "Help" dropdown.
+- Removed quick_info.svg and any renders of it in the GUI.
