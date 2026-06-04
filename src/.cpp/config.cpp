@@ -1,8 +1,9 @@
 // config.cpp
-// last updated: 23/05/2026
+// last updated: 04/06/2026
 // win32; cmake -G "Ninja" ..
 // win32; ninja
 #include "config.hpp"
+#include "sfx.hpp"
 #include "logger.hpp"
 #include "json.hpp"  // m; Oh so we are using N's JSON?
 #include <windows.h> // c; yeah why the fuck would i else curl it
@@ -52,7 +53,7 @@ void config_load(pabs_config &out_cfg)
     out_cfg.sfx_volume = 100;
     out_cfg.mute_success_sfx = false;
     out_cfg.mute_error_sfx = false;
-    out_cfg.mute_warning_sfx = false;
+    out_cfg.mute_info_sfx = false; // c; should of been info, not "warning" from the start
     out_cfg.iso_mode = 1;
     out_cfg.where_audio_go = true;
     out_cfg.ffmpeg_override = "";
@@ -75,7 +76,7 @@ void config_load(pabs_config &out_cfg)
             out_cfg.sfx_volume = j.value("sfx_volume", out_cfg.sfx_volume);
             out_cfg.mute_success_sfx = j.value("mute_success_sfx", out_cfg.mute_success_sfx);
             out_cfg.mute_error_sfx = j.value("mute_error_sfx", out_cfg.mute_error_sfx);
-            out_cfg.mute_warning_sfx = j.value("mute_warning_sfx", out_cfg.mute_warning_sfx);
+            out_cfg.mute_info_sfx = j.value("mute_info_sfx", out_cfg.mute_info_sfx);
             out_cfg.iso_mode = j.value("iso_mode", out_cfg.iso_mode);
             if (out_cfg.iso_mode < 0 || out_cfg.iso_mode > 3)
                 out_cfg.iso_mode = 1;
@@ -105,7 +106,7 @@ void config_save(const pabs_config &cfg)
     j["sfx_volume"] = cfg.sfx_volume;
     j["mute_success_sfx"] = cfg.mute_success_sfx;
     j["mute_error_sfx"] = cfg.mute_error_sfx;
-    j["mute_warning_sfx"] = cfg.mute_warning_sfx;
+    j["mute_info_sfx"] = cfg.mute_info_sfx;
     j["iso_mode"] = cfg.iso_mode;
     j["where_audio_go"] = cfg.where_audio_go;
     j["ffmpeg_override"] = cfg.ffmpeg_override;
@@ -114,6 +115,7 @@ void config_save(const pabs_config &cfg)
     {
         f << j.dump(4);
         LOG_INFO("Saved settings to pabs.json");
+        sfx::success_sfx();
     }
     else
     {
