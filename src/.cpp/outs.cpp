@@ -1,5 +1,5 @@
 // outs.cpp
-/// last updated: 26/05/2026
+/// last updated: 12/06/2026
 // win32; cmake -G "Ninja" ..
 // win32; ninja
 // m; You really need a better naming convention, outs?
@@ -704,7 +704,7 @@ void cd_about()
         ImGui::TextDisabled("PYROFOREVER's actual burning software");
         ImGui::Separator();
         ImGui::Spacing();
-        ImGui::Text("Version:  v0.2a");
+        ImGui::Text("Version:  v0.3a");
         ImGui::Text("Build:    " __DATE__ "  " __TIME__);
         ImGui::Spacing();
         ImGui::TextDisabled("Made by Common n' Mike.");
