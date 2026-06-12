@@ -7,7 +7,7 @@ Burning software made in **C++** with `IMAPIv2`, `ImGui` *(**DX11** based)*, no 
 Now on first glance, you might say *"Hey! This just looks like **ImgBurn**!"*, and I mean... yeah; it basically is just **ImgBurn** inspired, well at least the GUI. But if you click on any of the modes or any other tab, you'd see that they are *way* different.
 
 ## **Warning**
-PABS is still very early into development *(`v0.2a`)*. Some features may not work well, some may be missing *(e.g. video `DVDs`, boot `ISOs`)*, and some may be buggy; it will get better over time. Hopefully.
+PABS is still very early into development *(`v0.3a`)*. Some features may not work well, some may be missing *(e.g. video `DVDs`, boot `ISOs`)*, and some may be buggy; it will get better over time. Hopefully.
 
 ## **Features**
 - Burn `ISOs` to disc.
@@ -19,6 +19,7 @@ PABS is still very early into development *(`v0.2a`)*. Some features may not wor
 - Verify disc / sector data
 - Erase `-RW` discs *(quick or full)*.
 - Disc probing.
+- Drive probing.
 - Log reports.
 - `CUE` and `DVD` file creation.
 - **FFmpeg** conversion for audio `CDs`.
