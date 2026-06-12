@@ -773,6 +773,10 @@ void cd_keybinds()
         ImGui::SameLine(180);
         ImGui::Text("-> return bind");
         ImGui::Spacing();
+        ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.8f, 1.0f), "CTRL + SHIFT + E");
+        ImGui::SameLine(180);
+        ImGui::Text("-> do you work?");
+        ImGui::Spacing();
         ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.8f, 1.0f), "CTRL + A");
         ImGui::SameLine(180);
         ImGui::Text("-> select all items (in lists)");
