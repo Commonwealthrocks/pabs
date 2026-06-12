@@ -1,5 +1,5 @@
 // __imapi_com.cpp
-// last updated: 27/05/2026
+// last updated: 12/06/2026
 // win32; cmake -G "Ninja" ..
 // win32; ninja
 #include "__imapi_com.hpp"
@@ -177,6 +177,67 @@ void imapi_connpt_rm(IDispatch *src, REFIID conn_pt_iid, DWORD cookie)
         cp->Release();
     }
     cpc->Release();
+}
+
+HRESULT what_the_fuck_does_my_reader_support(IDispatch *recorder, drive_capa *caps)
+{
+    if (!recorder || !caps)
+        return E_POINTER;
+    caps->read_cd = false;
+    caps->read_dvd = false;
+    caps->read_bd = false;
+    caps->write_cd = false;
+    caps->write_dvd = false;
+    caps->write_bd = false;
+
+    VARIANT vProfiles;
+    VariantInit(&vProfiles);
+    HRESULT hr = imapi_dispatch_get(recorder, L"SupportedProfiles", &vProfiles);
+    if (FAILED(hr))
+        return hr;
+
+    if (vProfiles.vt == (VT_ARRAY | VT_VARIANT) && vProfiles.parray)
+    {
+        SAFEARRAY *psa = vProfiles.parray;
+        VARIANT *pData;
+        if (SUCCEEDED(SafeArrayAccessData(psa, (void **)&pData)))
+        {
+            LONG lBound, uBound;
+            SafeArrayGetLBound(psa, 1, &lBound);
+            SafeArrayGetUBound(psa, 1, &uBound);
+            for (LONG i = lBound; i <= uBound; ++i)
+            {
+                if (pData[i].vt == VT_I4)
+                {
+                    LONG profile = pData[i].lVal;
+                    if (profile == 0x0008)
+                        caps->read_cd = true;
+                    if (profile == 0x0009 || profile == 0x000a)
+                    {
+                        caps->read_cd = true;
+                        caps->write_cd = true;
+                    }
+                    if (profile == 0x0010)
+                        caps->read_dvd = true;
+                    if (profile >= 0x0011 && profile <= 0x002b)
+                    {
+                        caps->read_dvd = true;
+                        caps->write_dvd = true;
+                    }
+                    if (profile == 0x0040)
+                        caps->read_bd = true;
+                    if (profile >= 0x0041 && profile <= 0x0043)
+                    {
+                        caps->read_bd = true;
+                        caps->write_bd = true;
+                    }
+                }
+            }
+            SafeArrayUnaccessData(psa);
+        }
+    }
+    VariantClear(&vProfiles);
+    return S_OK;
 }
 
 // end

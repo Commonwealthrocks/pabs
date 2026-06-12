@@ -1,5 +1,5 @@
 // __imapi_com.hpp
-// last updated: 23/05/2026
+// last updated: 12/06/2026
 // win32; cmake -G "Ninja" ..
 // win32; ninja
 #pragma once
@@ -25,5 +25,16 @@ HRESULT imapi_open_disc_master(IDispatch **out);
 HRESULT imapi_find_recorder(IDispatch *disc_master, const std::string &drive_vol_path, IDispatch **out_recorder);
 bool imapi_connpt_advise(IDispatch *src, REFIID conn_pt_iid, IUnknown *sink, DWORD *cookie);
 void imapi_connpt_rm(IDispatch *src, REFIID conn_pt_iid, DWORD cookie);
+
+struct drive_capa
+{
+    bool read_cd;
+    bool read_dvd;
+    bool read_bd;
+    bool write_cd;
+    bool write_dvd;
+    bool write_bd;
+};
+HRESULT what_the_fuck_does_my_reader_support(IDispatch *recorder, drive_capa *caps);
 
 // end
