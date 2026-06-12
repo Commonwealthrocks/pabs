@@ -3468,7 +3468,7 @@ void gui_render(drive_info drives[], int drive_count)
                     append_field("  DVD:", caps.read_dvd ? "yeah" : "nah");
                     append_field("  Blu-Ray:", caps.read_bd ? "yeah" : "nah");
                     append("----------------------------------------\r\n");
-                    append("Write Capabilities:\r\n");
+                    append("Write capabilities:\r\n"); // c; mike stop doing this cammelcase bullshit 😒
                     append_field("  CD:", caps.write_cd ? "yeah" : "nah");
                     append_field("  DVD:", caps.write_dvd ? "yeah" : "nah");
                     append_field("  Blu-Ray:", caps.write_bd ? "yeah" : "nah");
