@@ -1,11 +1,11 @@
 ; installer.iss
-; last updated: 04/06/2026
+; last updated: 12/06/2026
 ; mk
 
 [Setup]
 AppName=PABS
-AppVersion=0.2a
-AppVerName=PABS - PYROFOREVER's actual burning software v0.2a
+AppVersion=0.3a
+AppVerName=PABS - PYROFOREVER's actual burning software v0.3a
 AppPublisher=Commonwealthrocks
 AppCopyright=Copyright (C) 2026 Commonwealthrocks and Mike
 AppContact=common@gmailbutnotreally.xyz
