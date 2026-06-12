@@ -1,5 +1,5 @@
 // ui.cpp
-// last updated: 04/06/2026
+// last updated: 12/06/2026
 // win32; cmake -G "Ninja" ..
 // win32; ninja
 #include "ui.hpp"
@@ -14,6 +14,7 @@
 #include "__read.hpp"
 #include "__erase.hpp"
 #include "__verify.hpp"
+#include "__imapi_com.hpp"
 #include "outs.hpp"
 #include <windows.h>
 #include <commdlg.h>
@@ -1014,6 +1015,7 @@ enum class app_mode
     audio_cd,
     verify_mode,
     are_you,
+    do_you_work,
     settings
 };
 static app_mode _app_mode = app_mode::starter_sector;
@@ -1053,6 +1055,9 @@ static void request_mode_change(app_mode new_mode)
             break;
         case app_mode::are_you:
             title_suffix = "are you?";
+            break;
+        case app_mode::do_you_work:
+            title_suffix = "do you work?";
             break;
         case app_mode::settings:
             title_suffix = "settings tab";
@@ -1447,6 +1452,8 @@ void gui_render(drive_info drives[], int drive_count)
                 _trigger_mk_cue();
             if (ImGui::IsKeyPressed(ImGuiKey_P))
                 _trigger_mk_dvd();
+            if (ImGui::IsKeyPressed(ImGuiKey_E))
+                request_mode_change(app_mode::do_you_work);
         }
     }
     static app_mode prev_mode = app_mode::starter_sector; // m; We enter here.
@@ -1582,6 +1589,10 @@ void gui_render(drive_info drives[], int drive_count)
         ImGui::SameLine();
         if (cen_img_button("##btn_discovery_mode", tex_discovery_mode, "Are you?", ImVec2(btn_w, btn_h), ImVec2(48, 48)))
             request_mode_change(app_mode::are_you);
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+            request_mode_change(app_mode::do_you_work);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Right click this button to probe drive capabilities.");
         ImGui::EndGroup();
         ImGui::PopStyleVar();
     }
@@ -3352,6 +3363,153 @@ void gui_render(drive_info drives[], int drive_count)
             show_unreadable_once = false;
             cd_error("ERROR", "The disc could not be fully read;\nperhaps it contains raw PCM audio data, or is just damaged?\nCheck the sectors via verify disc mode.");
         }
+    }
+    else if (_app_mode == app_mode::do_you_work)
+    {
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 10.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 4));
+        ImGui::BeginDisabled(any_engine_running);
+        ImGui::BeginChild("dyw_source", ImVec2(0, 85), true);
+        ImGui::TextDisabled("Source");
+        ImGui::Separator();
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("Drive:");
+        ImGui::SameLine();
+        if (drive_count > 0 && selected_drive_idx < drive_count)
+        {
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::BeginCombo("##dyw_drive", combo_label(selected_drive_idx)))
+            {
+                for (int i = 0; i < drive_count; i++)
+                {
+                    bool is_selected = (selected_drive_idx == i);
+                    if (ImGui::Selectable(combo_label(i), is_selected))
+                        selected_drive_idx = i;
+                    if (is_selected)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+            _status_line(false);
+        }
+        else
+        {
+            ImGui::TextDisabled("no reader / writer selected");
+        }
+        ImGui::EndChild();
+        static char dyw_report_buf[16384] = {0};
+        static char prev_drive[8] = {0};
+        static app_mode last_mode = app_mode::starter_sector;
+        enum class dyw_state
+        {
+            idle,
+            running,
+            done
+        };
+        static std::atomic<dyw_state> probe_state_dyw = {dyw_state::idle};
+        static std::mutex dyw_mutex;
+        if (last_mode != _app_mode)
+        {
+            memset(prev_drive, 0, sizeof(prev_drive));
+            last_mode = _app_mode;
+        }
+        bool drive_changed = false;
+        if (drive_count > 0 && selected_drive_idx >= 0 && selected_drive_idx < drive_count)
+        {
+            drive_changed = (strncmp(prev_drive, drives[selected_drive_idx].path, sizeof(prev_drive) - 1) != 0);
+        }
+        if (drive_changed && probe_state_dyw.load() != dyw_state::running)
+        {
+            memset(dyw_report_buf, 0, sizeof(dyw_report_buf));
+            if (drive_count > 0 && selected_drive_idx >= 0 && selected_drive_idx < drive_count)
+            {
+                snprintf(prev_drive, sizeof(prev_drive), "%s", drives[selected_drive_idx].path);
+                snprintf(dyw_report_buf, sizeof(dyw_report_buf), "probing drive capabilities...");
+                probe_state_dyw.store(dyw_state::running);
+                drive_info snap = drives[selected_drive_idx];
+                std::thread([snap]()
+                            {
+                    char buf[16384] = {0};
+                    auto append = [&](const char *fmt, ...)
+                    {
+                        va_list ap;
+                        va_start(ap, fmt);
+                        size_t cur = strlen(buf);
+                        vsnprintf(buf + cur, sizeof(buf) - cur - 1, fmt, ap);
+                        va_end(ap);
+                    };
+                    auto append_field = [&](const char *label, const char *value)
+                    {
+                        append("%-25s %s\r\n", label, value);
+                    };
+
+                    drive_capa caps = {};
+                    IDispatch *disc_master = nullptr;
+                    if (SUCCEEDED(imapi_open_disc_master(&disc_master)))
+                    {
+                        IDispatch *recorder = nullptr;
+                        if (SUCCEEDED(imapi_find_recorder(disc_master, snap.path, &recorder)))
+                        {
+                            what_the_fuck_does_my_reader_support(recorder, &caps);
+                            recorder->Release();
+                        }
+                        disc_master->Release();
+                    }
+
+                    append("capabilities.\n");
+                    append("----------------------------------------\r\n");
+                    append_field("Drive:", snap.path);
+                    append_field("Vendor:", snap.vendor);
+                    append_field("Product:", snap.product);
+                    append_field("Revision:", snap.revision);
+                    append("----------------------------------------\r\n");
+                    append("Literacy rate:\r\n");
+                    append_field("  CD:", caps.read_cd ? "yeah" : "nah");
+                    append_field("  DVD:", caps.read_dvd ? "yeah" : "nah");
+                    append_field("  Blu-Ray:", caps.read_bd ? "yeah" : "nah");
+                    append("----------------------------------------\r\n");
+                    append("Write Capabilities:\r\n");
+                    append_field("  CD:", caps.write_cd ? "yeah" : "nah");
+                    append_field("  DVD:", caps.write_dvd ? "yeah" : "nah");
+                    append_field("  Blu-Ray:", caps.write_bd ? "yeah" : "nah");
+                    append("----------------------------------------\r\n");
+                    append("Supported write speeds:\r\n  ");
+                    if (snap.supported_write_speeds.empty())
+                    {
+                        append("idk");
+                    }
+                    else
+                    {
+                        for (size_t i = 0; i < snap.supported_write_speeds.size(); ++i)
+                        {
+                            append("%dx", snap.supported_write_speeds[i]);
+                            if (i + 1 < snap.supported_write_speeds.size()) append(", ");
+                        }
+                    }
+                    append("\r\n");
+
+                    std::lock_guard<std::mutex> lk(dyw_mutex);
+                    snprintf(dyw_report_buf, sizeof(dyw_report_buf), "%s", buf);
+                    probe_state_dyw.store(dyw_state::done); })
+                    .detach();
+            }
+            else
+            {
+                snprintf(dyw_report_buf, sizeof(dyw_report_buf), "\r\nselect a drive to probe it\r\n");
+                probe_state_dyw.store(dyw_state::idle);
+            }
+        }
+        if (probe_state_dyw.load() == dyw_state::done)
+            probe_state_dyw.store(dyw_state::idle);
+        ImGui::Spacing();
+        ImGui::BeginChild("dyw_report", ImVec2(0, ImGui::GetWindowHeight() - 210.0f), true);
+        ImGui::TextDisabled("Report");
+        ImGui::Separator();
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputTextMultiline("##dyw_report", dyw_report_buf, sizeof(dyw_report_buf), ImVec2(-1, -1), ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_AllowTabInput);
+        ImGui::EndChild();
+        ImGui::EndDisabled();
+        ImGui::PopStyleVar();
     }
     ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 60);
     bool is_running = false;
